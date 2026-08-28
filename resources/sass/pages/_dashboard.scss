@@ -1,0 +1,566 @@
+// ============================================================================
+// DASHBOARD PAGE
+// ============================================================================
+
+.dashboard-page {
+  height: calc(100vh - 56px);
+  padding: 12px 14px;
+  color: #20262e;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  background: #f5f6f7;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+// ---------------------------------------------------------------------------
+// Summary stat boxes (Members / Sessions)
+// ---------------------------------------------------------------------------
+.summary-boxes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.stat-box {
+  min-width: 0;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #e8edf5;
+}
+
+.stat-box-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: #8490a5;
+}
+
+.stat-box-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.stat-box-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 4px;
+  border: 0;
+  border-bottom: 1px solid #f1f4f9;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.stat-row:hover { background: #f8fafc; }
+.stat-row:disabled { cursor: default; opacity: 0.7; }
+.stat-row:disabled:hover { background: transparent; }
+
+.stat-row-label {
+  color: #526071;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.stat-row-sub {
+  display: block;
+  margin-top: 2px;
+  color: #8490a5;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.stat-row-value {
+  color: #172033;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-slash {
+  color: #c0c8d4;
+  font-weight: 500;
+  padding: 0 1px;
+}
+
+.rate-badge {
+  display: inline-block;
+  margin-left: 4px;
+  color: #6b7280;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.stat-row.is-followup .stat-row-label,
+.stat-row.is-followup .stat-row-value {
+  color: #9a3412;
+}
+
+.stat-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: #e8edf5;
+}
+
+.stat-box-foot {
+  margin-top: 8px;
+}
+
+.ratio-bar {
+  height: 4px;
+  overflow: hidden;
+  background: #f1f4f9;
+}
+
+.ratio-fill {
+  height: 100%;
+  background: #29323a;
+  transition: width 0.3s ease;
+}
+
+.ratio-caption {
+  display: block;
+  margin-top: 4px;
+  color: #8490a5;
+  font-size: 10px;
+}
+
+// ---------------------------------------------------------------------------
+// Analytics Section
+// ---------------------------------------------------------------------------
+.analytics-section {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.analytics-panel {
+  background: #fff;
+  border: 1px solid #e8edf5;
+  padding: 8px 10px;
+  min-width: 0;
+}
+
+.analytics-panel-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #4b5563;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.analytics-empty {
+  font-size: 11px;
+  color: #8490a5;
+  padding: 10px 0;
+  text-align: center;
+}
+
+.overall-rate-value {
+  color: #29323a;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+  margin-bottom: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.overall-rate-sub {
+  color: #6b7280;
+  font-size: 11px;
+}
+
+// Trend chart
+.trend-chart {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  height: 88px;
+}
+
+.trend-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  cursor: default;
+}
+
+.trend-value {
+  font-size: 9px;
+  font-weight: 500;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-bar-area {
+  width: 100%;
+  height: 54px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: #f7f8f9;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.trend-bar {
+  width: 60%;
+  max-width: 24px;
+  background: #29323a;
+  min-height: 2px;
+  transition: height 0.2s ease;
+}
+
+.trend-bar.is-monthly {
+  background: #6b7280;
+}
+
+.trend-label {
+  font-size: 9px;
+  color: #6b7280;
+  text-align: center;
+}
+
+// Status breakdown
+.status-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-name {
+  width: 56px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #374151;
+  text-transform: capitalize;
+}
+
+.status-track {
+  flex: 1;
+  height: 10px;
+  background: #f3f4f6;
+}
+
+.status-fill {
+  height: 100%;
+  background: #29323a;
+  transition: width 0.2s ease;
+}
+
+.status-count {
+  width: 64px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #374151;
+  text-align: right;
+}
+
+.status-pct {
+  color: #6b7280;
+}
+
+.type-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.type-chip {
+  font-size: 10px;
+  color: #374151;
+  background: #f3f4f6;
+  padding: 2px 6px;
+}
+
+// ---------------------------------------------------------------------------
+// Work Area (Recent Sessions + Follow-ups)
+// ---------------------------------------------------------------------------
+.dashboard-page .work-area {
+  flex: 5 1 420px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.dashboard-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.dashboard-page .table-meta {
+  margin-bottom: 0;
+  justify-content: flex-end;
+}
+
+.panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+// ---------------------------------------------------------------------------
+// Follow-up panel
+// ---------------------------------------------------------------------------
+.followup-desc {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.roster-clickable {
+  cursor: pointer;
+}
+
+.roster-clickable:hover {
+  background: #f5f7f9;
+}
+
+.followup-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.followup-meta {
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// ---------------------------------------------------------------------------
+// Recent Sessions table
+// ---------------------------------------------------------------------------
+.dashboard-page .b-table {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-page .b-table .table-wrapper {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+.dashboard-page .table {
+  border: none;
+}
+
+.dashboard-page .table th,
+.dashboard-page .table td {
+  border: none;
+  border-bottom: 1px solid #eef0f2;
+}
+
+.dashboard-page .table th {
+  color: #59636e;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: #f7f8f9;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.dashboard-page .table td {
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.dashboard-page .b-table .table-hover > tbody > tr:hover {
+  background-color: #f5f7f9;
+}
+
+.summary-card.no-pointer {
+  cursor: default;
+}
+
+.summary-card.no-pointer:hover {
+  background: #ffffff;
+}
+
+// ---------------------------------------------------------------------------
+// Insights Section (pinned at bottom)
+// ---------------------------------------------------------------------------
+.insights-section {
+  margin-top: 8px;
+  flex: 1 1 170px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.insights-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.insights-card {
+  height: 100%;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #e8edf5;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.insights-card-title {
+  color: #28364f;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.insights-card-sub {
+  margin: 2px 0 8px;
+  color: #8b96aa;
+  font-size: 10px;
+}
+
+.insights-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.insights-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid #f1f4f9;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.insights-row:last-child { border-bottom: 0; }
+.insights-row:hover { background: #f8fafc; }
+
+.insights-rank {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: #29323a;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.insights-name {
+  flex: 1;
+  min-width: 0;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insights-value {
+  color: #6b7280;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.insights-empty {
+  color: #8b96aa;
+  font-size: 11px;
+}
+
+// ---------------------------------------------------------------------------
+// Responsive
+// ---------------------------------------------------------------------------
+@media (max-width: 1100px) {
+  .analytics-grid { grid-template-columns: repeat(2, 1fr); }
+  .insights-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 900px) {
+  .dashboard-page {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
+  .summary-boxes { grid-template-columns: 1fr; }
+  .dashboard-page .work-area { flex: none; flex-direction: column; overflow: visible; }
+}
+
+@media (max-width: 720px) {
+  .analytics-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .dashboard-page { padding: 10px; }
+  .stat-box { padding: 10px 12px; }
+  .trend-chart { min-width: 420px; }
+  .analytics-panel { overflow-x: auto; }
+}
+
+.dashboard-page .detail-container {
+  padding: 12px 14px;
+}

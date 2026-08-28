@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Public Attendance — Word of Hope</title>
+
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/public-attendance-desktop.css" media="screen and (min-width: 768px)">
+  <link rel="stylesheet" href="../assets/css/public-attendance-mobile.css" media="screen and (max-width: 767px)">
+  
+  <!-- React & ReactDOM Local -->
+  <script src="/assets/vendor/react.development.js"></script>
+  <script src="/assets/vendor/react-dom.development.js"></script>
+  
+  <!-- Dexie.js for IndexedDB Local -->
+  <script src="/assets/vendor/dexie.js"></script>
+
+  <!-- jsQR fallback decoder for browsers without BarcodeDetector QR support -->
+  <script src="/assets/vendor/jsQR.js"></script>
+  
+  <!-- Babel Standalone for JSX transformation Local -->
+  <script src="/assets/vendor/babel-standalone.js"></script>
+
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--color-page-bg);
+    }
+    #root {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="../assets/js/theme.js"></script>
+
+  <script type="text/babel" data-type="module">
+    // Mock the 'react' import for Babel Standalone
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // We can't easily import from .jsx file in browser without a build tool 
+    // unless we use Babel Standalone's data-presets="react" and data-type="module".
+    // For simplicity, we will fetch the JSX content and transform it.
+    
+    async function loadApp() {
+      try {
+        const response = await fetch('/scanpage/PublicAttendance.jsx');
+        let code = await response.text();
+        
+        // Remove the import statement as we are using global React
+        code = code.replace(/import \{.*?\} from "react";/, '');
+        
+        // Transform JSX to JS
+        const output = Babel.transform(code, {
+          presets: ['react'],
+          filename: 'PublicAttendance.jsx'
+        }).code;
+
+        // Create a function from the transformed code
+        // We need to handle the 'export default'
+        const factory = new Function('React', 'useState', 'useEffect', 'useRef', 'useCallback', `
+          const exports = {};
+          ${output.replace('export default', 'exports.default =')}
+          return exports.default;
+        `);
+
+        const PublicAttendance = factory(React, useState, useEffect, useRef, useCallback);
+        
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<PublicAttendance />);
+      } catch (err) {
+        console.error("Failed to load PublicAttendance.jsx:", err);
+        document.getElementById('root').innerHTML = `<div style="color: white; padding: 20px;">Error loading kiosk: ${err.message}</div>`;
+      }
+    }
+
+    loadApp();
+  </script>
+
+  <script>
+    // Service worker disabled for development
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for(let registration of registrations) {
+          registration.unregister();
+          console.log('[Service Worker] Unregistered:', registration.scope);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

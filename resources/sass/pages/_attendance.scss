@@ -1,0 +1,295 @@
+// ============================================================================
+// ATTENDANCE PAGE - split view (sessions table + roster panel)
+// Reusable pieces live in _design-system.scss
+// ============================================================================
+
+.attendance-page {
+  height: calc(100vh - 56px);
+  padding: 12px 14px;
+  color: #20262e;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  background: #f5f6f7;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.attendance-page .work-area {
+  flex: 1;
+  min-height: 0;
+}
+
+// ---------------------------------------------------------------------------
+// Toolbar
+// ---------------------------------------------------------------------------
+.att-date-filter {
+  width: 200px;
+  flex-shrink: 0;
+}
+
+.session-list { display: flex; flex-direction: column; gap: 8px; overflow: auto; padding: 2px; }
+.session-card { display: grid; grid-template-columns: 86px minmax(0, 1fr) 72px auto; align-items: center; gap: 14px; width: 100%; padding: 13px 14px; text-align: left; color: #26334a; background: #fbfcff; border: 1px solid #e4eaf3; border-radius: 0; cursor: pointer; transition: border-color .18s ease, background .18s ease; }
+.session-card:hover, .session-card.is-selected { background: #f0f5ff; border-color: #9aafd3; transform: translateX(2px); }
+.session-date { color: #7b879b; font-size: 11px; font-weight: 600; }
+.session-main { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.session-main strong { overflow: hidden; color: #1b263b; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.session-main small { color: #8994a7; font-size: 11px; }
+.session-count { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.session-count b { color: #244a7c; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.session-count small { color: #8994a7; font-size: 10px; white-space: nowrap; }
+
+.session-rate {
+  display: inline-block;
+  margin-top: 1px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.session-rate.is-high { color: #166534; background: #f0fdf4; }
+.session-rate.is-mid { color: #92400e; background: #fffbeb; }
+.session-rate.is-low { color: #991b1b; background: #fef2f2; }
+
+// ---------------------------------------------------------------------------
+// Table meta
+// ---------------------------------------------------------------------------
+.att-batch-actions {
+  color: #4b5563;
+}
+
+// ---------------------------------------------------------------------------
+// Right panel: roster
+// ---------------------------------------------------------------------------
+.att-count-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #166534;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  padding: 2px 8px;
+}
+
+.roster-title {
+  margin: 12px 0 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #4b5563;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.roster-search {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.roster-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.roster-toolbar .button {
+  flex-shrink: 0;
+}
+
+.roster-name-btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1f2937;
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.roster-name-btn:not(:disabled):hover {
+  color: #31598e;
+  text-decoration: underline;
+}
+
+.roster-name-btn:disabled {
+  cursor: default;
+}
+
+.roster-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e5e7eb;
+}
+
+@media (max-width: 760px) {
+  .attendance-page {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
+  .att-date-filter {
+    width: 100%;
+  }
+
+  .session-card { grid-template-columns: 1fr auto; gap: 7px; }
+  .session-date { grid-column: 1 / 2; }
+  .session-card > .status-tag { grid-column: 2; grid-row: 1; }
+  .session-main { grid-column: 1 / -1; }
+  .session-count { grid-column: 1 / -1; align-items: flex-start; flex-direction: row; gap: 5px; }
+}
+
+@media (max-width: 560px) {
+  .attendance-page { padding: 10px; }
+  .session-card { gap: 8px; padding: 11px 12px; }
+  .session-count small:not(.session-rate) { display: none; }
+  .roster-toolbar { flex-wrap: wrap; }
+  .roster-toolbar .button { width: 100%; }
+  .manual-attendance { align-items: stretch; flex-direction: column; }
+  .attendance-detail-actions .button { flex: 1 1 100%; }
+  .roster-row { align-items: flex-start; }
+}
+
+.roster-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 1px solid #eef0f2;
+}
+
+.roster-row:last-child {
+  border-bottom: 0;
+}
+
+.roster-name {
+  font-size: 12px;
+  color: #1f2937;
+}
+
+.roster-external-tag {
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6b7280;
+  background: #f3f4f6;
+}
+
+.stat-strip-live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 0 12px;
+  font-size: 10px;
+  color: #8490a5;
+  white-space: nowrap;
+}
+
+.stat-strip-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #b6c0cf;
+}
+
+.stat-strip-live-dot.is-refreshing {
+  background: #31598e;
+  animation: attPulse 1s ease-in-out infinite;
+}
+
+@keyframes attPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.roster-empty {
+  padding: 12px 10px;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+}
+
+.att-save-error {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #b91c1c;
+}
+
+.att-save-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.checkin-results {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+}
+
+.checkin-results .detail-row {
+  margin-top: 6px;
+}
+
+.checkin-results .detail-val {
+  text-transform: capitalize;
+}
+
+.record-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.record-status small {
+  color: #6b7280;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.attendance-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+
+.manual-attendance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.manual-attendance .select {
+  flex: 1;
+}
+
+.record-remove {
+  display: block;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #b91c1c;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.record-remove:hover {
+  text-decoration: underline;
+}

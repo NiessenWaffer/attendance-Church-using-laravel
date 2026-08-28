@@ -1,0 +1,504 @@
+// ============================================================================
+// MEMBERS PAGE - layout + table overrides
+// Reusable pieces live in _design-system.scss
+// ============================================================================
+
+.members-page {
+  height: calc(100vh - 56px);
+  padding: 12px 14px;
+  color: #20262e;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  background: #f5f6f7;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+// ---------------------------------------------------------------------------
+// Local / External view toggle
+// ---------------------------------------------------------------------------
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid #e2e5ea;
+  border-radius: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.view-toggle-btn {
+  padding: 6px 12px;
+  border: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: #4b5563;
+  background: #fff;
+  cursor: pointer;
+}
+
+.view-toggle-btn + .view-toggle-btn {
+  border-left: 1px solid #e2e5ea;
+}
+
+.view-toggle-btn.active {
+  color: #fff;
+  background: #1f2937;
+}
+
+.member-source-tag {
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: 0;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6b7280;
+  background: #f3f4f6;
+}
+
+// ---------------------------------------------------------------------------
+// Member table
+// ---------------------------------------------------------------------------
+.member-table-wrap {  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.members-toolbar {
+  align-items: center;
+  min-height: 42px;
+  margin: 0;
+  padding: 7px 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.member-code {
+  color: #4b5563;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+}
+
+.member-name-cell {
+  display: flex;
+  flex-direction: column;
+}
+
+.member-fullname {
+  font-size: 11px;
+  color: #111827;
+  font-weight: 500;
+}
+
+.member-email {
+  color: #6b7280;
+  font-size: 10px;
+}
+
+// ---------------------------------------------------------------------------
+// Ministry tags (external members)
+// ---------------------------------------------------------------------------
+.ministry-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.ministry-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 0;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: #3b4650;
+  background: #eef1f4;
+  border: 1px solid #e2e5ea;
+  white-space: nowrap;
+}
+
+// ---------------------------------------------------------------------------
+// Member profile panel
+// ---------------------------------------------------------------------------
+.profile-hero {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: #f7f8f9;
+  border: 1px solid #eef0f2;
+  border-radius: 0;
+}
+
+.profile-avatar {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  background: #29323a;
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.profile-avatar.is-external {
+  background: #475569;
+}
+
+.profile-hero-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.profile-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.profile-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.profile-code {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.profile-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #edf0f2;
+}
+
+.section-label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.profile-field {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-field-label {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.profile-field-value {
+  font-size: 12px;
+  color: #1f2937;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.action-dots-btn {
+  background: transparent;
+  border: 0;
+  color: #6b7280;
+  padding: 2px 4px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.action-dots-btn:hover {
+  color: #111827;
+}
+
+// ---------------------------------------------------------------------------
+// Square, low-color Buefy overrides (members table)
+// ---------------------------------------------------------------------------
+.members-page .b-table {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.members-page .b-table .table-wrapper {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.members-page .table {
+  border: none;
+}
+
+.members-page .table th,
+.members-page .table td {
+  border: none;
+  border-bottom: 1px solid #eef0f2;
+}
+
+.members-page .table th {
+  color: #59636e;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: #f7f8f9;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.members-page .table td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+// Subtle hover highlight
+.members-page .b-table .table-hover > tbody > tr:hover {
+  background-color: #f5f7f9;
+}
+
+// Selected row - neutral gray instead of default violet
+.members-page .b-table .table tr.is-selected {
+  background-color: #e5e7eb !important;
+  color: #111827 !important;
+}
+
+.members-page .b-table .table tr.is-selected td {
+  color: #111827 !important;
+}
+
+.members-page .b-table .pagination {
+  padding: 6px 8px 0;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.members-page .b-table .pagination-link,
+.members-page .b-table .pagination-previous,
+.members-page .b-table .pagination-next {
+  border-radius: 6px;
+  font-size: 11px;
+  border-color: #d9dde1;
+}
+
+.members-page .b-table .pagination-link.is-current {
+  background-color: #29323a;
+  border-color: #29323a;
+}
+
+// Member profile panel (component-driven)
+.profile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.table-panel.members-panel {
+  padding: 0;
+  border-color: #dfe3e8;
+}
+
+.members-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.85fr) minmax(220px, 0.6fr);
+  gap: 0;
+  height: 100%;
+  min-height: 0;
+}
+
+.members-list-pane {
+  min-width: 0;
+  padding: 0 8px 8px;
+  border-right: 1px solid #e5e7eb;
+}
+
+.member-profile-panel,
+.member-profile-placeholder {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-width: 0 0 0 1px;
+  background: #ffffff;
+}
+
+.member-profile-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.profile-sub {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.profile-status {
+  margin-top: 0;
+}
+
+.avatar-initials {
+  font-size: 17px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.avatar-tag {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  padding: 1px 4px;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #ffffff;
+  background: #475569;
+  border-radius: 0;
+}
+
+.profile-avatar.is-external {
+  position: relative;
+  background: #475569;
+}
+
+.ministry-empty {
+  font-size: 11px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.profile-field-value.is-capitalize {
+  text-transform: capitalize;
+}
+
+.member-profile-panel .profile-hero {
+  gap: 10px;
+  margin-bottom: 0;
+  padding: 7px 8px;
+}
+
+.member-profile-panel .profile-avatar {
+  width: 54px;
+  height: 54px;
+}
+
+.member-profile-panel .avatar-initials {
+  font-size: 17px;
+}
+
+.member-profile-panel .profile-name {
+  font-size: 15px;
+}
+
+.member-profile-panel .profile-field-label {
+  font-size: 10px;
+}
+
+.member-profile-panel .profile-field-value {
+  font-size: 12px;
+  text-align: left;
+}
+
+.is-external {
+  color: #475569 !important;
+  background: #e2e8f0 !important;
+}
+
+@media (max-width: 900px) {
+  .members-page {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
+  .members-split {
+    grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
+  }
+
+  .members-list-pane {
+    overflow-x: auto;
+    border-right: 0;
+  }
+
+  .member-profile-panel,
+  .member-profile-placeholder {
+    min-height: 280px;
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .work-area {
+    flex-direction: column;
+  }
+
+  .side-panel {
+    width: 100%;
+    flex: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .members-page {
+    padding: 10px;
+  }
+
+  .members-page .table {
+    min-width: 700px;
+  }
+
+  .members-toolbar {
+    flex-wrap: wrap;
+    padding: 7px 8px;
+  }
+
+  .members-toolbar .search-input {
+    flex: 1 1 100%;
+  }
+
+  .members-toolbar-actions {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
