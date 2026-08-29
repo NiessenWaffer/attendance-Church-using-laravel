@@ -90,6 +90,48 @@ class ScheduleManagementTest extends TestCase
         );
     }
 
+    public function testPastOpenSessionsAreCompletedWithoutChangingCancelledHistory()
+    {
+        $scheduledId = $this->insertSession(null, '2026-08-28', '11:00:00', '12:00:00', 'scheduled');
+        $activeId = $this->insertSession(null, '2026-08-29', '11:00:00', '12:00:00', 'active');
+        $cancelledId = $this->insertSession(null, '2026-08-29', '11:00:00', '12:00:00', 'cancelled');
+        $futureId = $this->insertSession(null, '2026-08-31', '11:00:00', '12:00:00', 'active');
+
+        app(ScheduleService::class)->autoUpdateSessionStatuses();
+
+        $this->assertDatabaseHas('attendance_sessions', ['id' => $scheduledId, 'status' => 'completed']);
+        $this->assertDatabaseHas('attendance_sessions', ['id' => $activeId, 'status' => 'completed']);
+        $this->assertDatabaseHas('attendance_sessions', ['id' => $cancelledId, 'status' => 'cancelled']);
+        $this->assertDatabaseHas('attendance_sessions', ['id' => $futureId, 'status' => 'active']);
+    }
+
+    public function testDefaultEndTimeRepairPropagatesOnlyToTodayAndFutureSessions()
+    {
+        $serviceId = $this->insertService([
+            'name' => 'Sunday Worship',
+            'description' => 'Sunday Worship Service',
+            'end_time' => null,
+            'is_default' => 1,
+        ]);
+        $pastId = $this->insertSession($serviceId, '2026-08-23', '08:00:00', null, 'active');
+        $todayId = $this->insertSession($serviceId, '2026-08-30', '08:00:00', null, 'active');
+        $futureId = $this->insertSession($serviceId, '2026-09-06', '08:00:00', null, 'scheduled');
+        DB::table('attendance_records')->insert([
+            'session_id' => $todayId,
+            'external_member_id' => 'TEST-REPAIR',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        app(ScheduleService::class)->ensureDefaults();
+
+        $this->assertDatabaseHas('services', ['id' => $serviceId, 'end_time' => '12:00:00']);
+        $this->assertDatabaseHas('attendance_sessions', ['id' => $pastId, 'end_time' => null, 'status' => 'active']);
+        $this->assertDatabaseHas('attendance_sessions', ['id' => $todayId, 'end_time' => '12:00:00', 'status' => 'active']);
+        $this->assertDatabaseHas('attendance_sessions', ['id' => $futureId, 'end_time' => '12:00:00', 'status' => 'scheduled']);
+        $this->assertSame(1, DB::table('attendance_records')->where('session_id', $todayId)->count());
+    }
+
     public function testRecurrenceSynchronizationGeneratesNewDatesAndPreservesAttendedRows()
     {
         $serviceId = $this->insertService([
@@ -247,7 +289,7 @@ class ScheduleManagementTest extends TestCase
         ], $overrides));
     }
 
-    private function insertSession($serviceId, string $date, string $start, string $end, string $status = 'scheduled'): int
+    private function insertSession($serviceId, string $date, string $start, ?string $end, string $status = 'scheduled'): int
     {
         return DB::table('attendance_sessions')->insertGetId([
             'service_id' => $serviceId,

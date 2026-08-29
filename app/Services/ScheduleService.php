@@ -82,6 +82,10 @@ class ScheduleService
                     ->where('is_default', 1)
                     ->update($updates);
 
+                if (array_key_exists('end_time', $updates)) {
+                    $this->propagateMissingEndTime((int) $existingSchedule->id, $schedule['end_time']);
+                }
+
                 continue;
             }
 
@@ -217,21 +221,26 @@ class ScheduleService
         $schema = app(AttendanceSchema::class);
         $db = $schema->db();
         $sessionsTable = $schema->sessionsTable();
+        $sessionDateColumn = $schema->sessionDateColumn();
+        $statusColumn = $schema->sessionStatusColumn();
+
+        $db->table($sessionsTable)
+            ->where($sessionDateColumn, '<', $today)
+            ->whereNotIn($statusColumn, ['completed', 'cancelled'])
+            ->update([$statusColumn => 'completed', 'updated_at' => now()]);
 
         $sessions = $db->table($sessionsTable)
-            ->where($schema->sessionDateColumn(), $today)
-            ->whereNotIn($schema->sessionStatusColumn(), ['completed', 'cancelled'])
+            ->where($sessionDateColumn, $today)
+            ->whereNotIn($statusColumn, ['completed', 'cancelled'])
             ->get();
 
         foreach ($sessions as $session) {
             $status = $this->statusForSession($session, $now);
 
-            $statusColumn = $schema->sessionStatusColumn();
-
             if ($status !== $session->{$statusColumn}) {
                 $db->table($sessionsTable)
                     ->where('id', $session->id)
-                    ->update([$schema->sessionStatusColumn() => $status, 'updated_at' => now()]);
+                    ->update([$statusColumn => $status, 'updated_at' => now()]);
             }
         }
     }
@@ -402,6 +411,17 @@ class ScheduleService
         }
 
         return 'scheduled';
+    }
+
+    private function propagateMissingEndTime(int $serviceId, string $endTime): void
+    {
+        $schema = app(AttendanceSchema::class);
+
+        $schema->db()->table($schema->sessionsTable())
+            ->where('service_id', $serviceId)
+            ->where($schema->sessionDateColumn(), '>=', Carbon::today()->format('Y-m-d'))
+            ->whereNull('end_time')
+            ->update(['end_time' => $endTime, 'updated_at' => now()]);
     }
 
     private function sessionHasAttendance(int $sessionId): bool

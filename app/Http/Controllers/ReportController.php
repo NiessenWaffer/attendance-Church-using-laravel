@@ -39,11 +39,14 @@ class ReportController extends Controller
 
         $statuses = ['present' => 0, 'absent' => 0, 'excused' => 0];
         $statusMemberColumn = $schema->recordMemberCodeColumn() ?: $schema->recordMemberIdColumn();
+        $statusIdentityColumn = $statusMemberColumn !== null
+            ? $recordsTable . '.' . $statusMemberColumn
+            : $recordsTable . '.id';
         $statusRows = (clone $base)
             ->select(
                 DB::raw($schema->attendanceStatusSelectSql($recordsTable, $sessionsTable) . ' as attendance_status'),
                 $recordsTable . '.' . $schema->recordSessionIdColumn(),
-                $recordsTable . '.' . $statusMemberColumn
+                $statusIdentityColumn
             )
             ->distinct()
             ->get();
@@ -54,25 +57,7 @@ class ReportController extends Controller
         }
 
         $total = array_sum($statuses);
-        $healthBase = (clone $base)
-            ->where($sessionsTable . '.' . $schema->sessionStatusColumn(), '!=', 'cancelled');
-        $healthMemberColumn = $schema->mode() === 'prod'
-            ? $schema->recordMemberIdColumn()
-            : $schema->recordMemberCodeColumn();
-        $this->excludeFutureSessions($healthBase, $sessionsTable, $schema);
-        $bySession = (clone $healthBase)
-            ->select(
-                $sessionsTable . '.id',
-                DB::raw($schema->hasColumn($sessionsTable, 'service_id') ? $sessionsTable . '.service_id' : 'NULL as service_id'),
-                DB::raw($sessionsTable . '.' . $schema->sessionTitleColumn() . ' as session_title'),
-                DB::raw($sessionsTable . '.' . $schema->sessionDateColumn() . ' as session_date'),
-                DB::raw('COUNT(DISTINCT ' . $recordsTable . '.' . $healthMemberColumn . ') as record_count'),
-                DB::raw('COUNT(*) as raw_record_count')
-            )
-            ->groupBy($sessionsTable . '.id', $sessionsTable . '.' . $schema->sessionTitleColumn(), $sessionsTable . '.' . $schema->sessionDateColumn())
-            ->orderByDesc($sessionsTable . '.' . $schema->sessionDateColumn())
-            ->orderByDesc($sessionsTable . '.id')
-            ->get();
+        $bySession = $this->eligibleSessions($request, $schema);
 
         $audience = new AttendanceAudience($schema, $members, $this->hasMemberScope($request, $ministry));
         $audience->enrich($bySession);
@@ -120,36 +105,14 @@ class ReportController extends Controller
         $sunday = $this->buildSundaySummary($request, $members);
         $youth = $this->buildYouthSummary($request, $members);
 
-        $base = AttendanceQuery::forHistory($request);
+        $memberColumn = null;
         if ($this->hasMemberScope($request, $ministry)) {
             $memberColumn = $schema->mode() === 'prod'
                 ? $schema->recordMemberIdColumn()
                 : $schema->recordMemberCodeColumn();
-
-            if ($memberColumn !== null) {
-                $base->whereIn($recordsTable . '.' . $memberColumn, array_keys($members));
-            }
         }
 
-        $bySessionQuery = (clone $base)
-            ->where($sessionsTable . '.' . $schema->sessionStatusColumn(), '!=', 'cancelled');
-        $healthMemberColumn = $schema->mode() === 'prod'
-            ? $schema->recordMemberIdColumn()
-            : $schema->recordMemberCodeColumn();
-        $this->excludeFutureSessions($bySessionQuery, $sessionsTable, $schema);
-        $bySession = $bySessionQuery->select(
-                $sessionsTable . '.id',
-                DB::raw($schema->hasColumn($sessionsTable, 'service_id') ? $sessionsTable . '.service_id' : 'NULL as service_id'),
-                DB::raw($sessionsTable . '.' . $schema->sessionTitleColumn() . ' as session_title'),
-                DB::raw($sessionsTable . '.' . $schema->sessionDateColumn() . ' as session_date'),
-                DB::raw('COUNT(DISTINCT ' . $recordsTable . '.' . $healthMemberColumn . ') as record_count'),
-                DB::raw('COUNT(*) as raw_record_count')
-            )
-            ->groupBy($sessionsTable . '.id', $sessionsTable . '.' . $schema->sessionTitleColumn(), $sessionsTable . '.' . $schema->sessionDateColumn())
-            ->orderByDesc($sessionsTable . '.' . $schema->sessionDateColumn())
-            ->orderByDesc($sessionsTable . '.id')
-            ->limit(50)
-            ->get();
+        $bySession = $this->eligibleSessions($request, $schema);
 
         (new AttendanceAudience($schema, $members, $this->hasMemberScope($request, $ministry)))->enrich($bySession);
 
@@ -252,6 +215,37 @@ class ReportController extends Controller
             || trim((string) $request->input('member_id', '')) !== '';
     }
 
+    private function eligibleSessions(Request $request, AttendanceSchema $schema)
+    {
+        $sessionsTable = $schema->sessionsTable();
+        $query = $schema->db()->table($sessionsTable)
+            ->select(...$schema->sessionSelectColumns($sessionsTable, $schema->recordsTable()))
+            ->where($sessionsTable . '.' . $schema->sessionStatusColumn(), '!=', 'cancelled');
+        $this->excludeFutureSessions($query, $sessionsTable, $schema);
+
+        if ($request->filled('session_id')) {
+            $query->where($sessionsTable . '.id', $request->input('session_id'));
+        }
+
+        $serviceId = $request->input('service_id', $request->input('schedule_id'));
+        if ($serviceId !== null && $serviceId !== '' && $schema->hasColumn($sessionsTable, 'service_id')) {
+            $query->where($sessionsTable . '.service_id', $serviceId);
+        }
+
+        if ($request->filled('date_from')) {
+            $query->where($sessionsTable . '.' . $schema->sessionDateColumn(), '>=', $request->input('date_from'));
+        }
+
+        if ($request->filled('date_to')) {
+            $query->where($sessionsTable . '.' . $schema->sessionDateColumn(), '<=', $request->input('date_to'));
+        }
+
+        return $query
+            ->orderByDesc($sessionsTable . '.' . $schema->sessionDateColumn())
+            ->orderByDesc($sessionsTable . '.id')
+            ->get();
+    }
+
     private function excludeFutureSessions($query, string $sessionsTable, AttendanceSchema $schema): void
     {
         $dateColumn = $sessionsTable . '.' . $schema->sessionDateColumn();
@@ -338,11 +332,6 @@ class ReportController extends Controller
             ->select($recordsTable . '.' . $sessionIdColumn . ' as session_id', $recordsTable . '.' . $memberCodeColumn . ' as member_code')
             ->whereIn($recordsTable . '.' . $sessionIdColumn, array_keys($sessionDateById))
             ->whereRaw('(' . $schema->attendanceStatusSelectSql($recordsTable, $sessionsTable) . ') = ?', ['present']);
-
-        $attendanceStatus = $request->input('attendance_status');
-        if ($attendanceStatus !== null && $attendanceStatus !== '') {
-            $recordsQuery->whereRaw('(' . $schema->attendanceStatusSelectSql($recordsTable, $sessionsTable) . ') = ?', [$attendanceStatus]);
-        }
 
         $records = $recordsQuery->get();
 
@@ -495,11 +484,6 @@ class ReportController extends Controller
             ->select($recordsTable . '.' . $sessionIdColumn . ' as session_id', $recordsTable . '.' . $memberCodeColumn . ' as member_code')
             ->whereIn($recordsTable . '.' . $sessionIdColumn, array_keys($sessionMeta))
             ->whereRaw('(' . $schema->attendanceStatusSelectSql($recordsTable, $sessionsTable) . ') = ?', ['present']);
-
-        $attendanceStatus = $request->input('attendance_status');
-        if ($attendanceStatus !== null && $attendanceStatus !== '') {
-            $recordsQuery->whereRaw('(' . $schema->attendanceStatusSelectSql($recordsTable, $sessionsTable) . ') = ?', [$attendanceStatus]);
-        }
 
         $records = $recordsQuery->get();
 

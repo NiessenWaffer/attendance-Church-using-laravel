@@ -124,11 +124,46 @@ class ReportAttendanceSemanticsTest extends TestCase
         $this->assertSame(3, $general['eligible_member_count']);
         $this->assertSame('ministry', $targeted['audience_type']);
         $this->assertSame('general', $general['audience_type']);
+
+        $scopedData = $this->summary(['ministry' => 'Youth Ministry']);
+        $scopedTargeted = collect($scopedData['by_session'])->first(function ($session) use ($targetedSession) {
+            return (int) $session['id'] === $targetedSession;
+        });
+        $this->assertSame(1, $scopedTargeted['record_count']);
+        $this->assertSame(1, $scopedTargeted['participation_count']);
+        $this->assertSame(1, $scopedTargeted['eligible_member_count']);
+        $this->assertSame(0, $scopedTargeted['guest_other_count']);
     }
 
-    private function summary(): array
+    public function testZeroAttendanceSessionContributesAudienceOpportunitiesWithoutInventingAbsences(): void
     {
-        $response = app(ReportController::class)->summary(Request::create('/api/report/summary', 'GET'));
+        $serviceId = $this->service('General Worship', null);
+        $attendedSession = $this->createSession($serviceId, 'Attended Service');
+        $emptySession = $this->createSession($serviceId, 'Zero Attendance Service');
+        $this->attendance($attendedSession, 'M101');
+
+        $data = $this->summary();
+        $empty = collect($data['by_session'])->first(function ($session) use ($emptySession) {
+            return (int) $session['id'] === $emptySession;
+        });
+
+        $this->assertCount(2, $data['by_session']);
+        $this->assertNotNull($empty);
+        $this->assertSame(0, $empty['participation_count']);
+        $this->assertSame(3, $empty['eligible_member_count']);
+        $this->assertSame(6, $data['rate_denominator']);
+        $this->assertSame(1, $data['expected_participations']);
+        $this->assertSame(17, $data['rate']);
+
+        $absentData = $this->summary(['attendance_status' => 'absent']);
+        $this->assertCount(2, $absentData['by_session']);
+        $this->assertSame(17, $absentData['rate']);
+        $this->assertSame(0, $absentData['statuses']['absent']);
+    }
+
+    private function summary(array $filters = []): array
+    {
+        $response = app(ReportController::class)->summary(Request::create('/api/report/summary', 'GET', $filters));
 
         return $response->getData(true)['data'];
     }

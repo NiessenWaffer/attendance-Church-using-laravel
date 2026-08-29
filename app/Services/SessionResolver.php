@@ -17,9 +17,8 @@ class SessionResolver
     /**
      * Resolve the session a scan belongs to.
      *
-     * Strategy B (locked kiosk): an explicit session_id maps the record
-     * directly to that session as long as its date is today and it is still
-     * scheduled/active - the clock window is deliberately bypassed.
+     * Strategy B (locked kiosk): an explicit session_id maps the record to
+     * that session when its date, status, and effective clock window match.
      *
      * Strategy A (dynamic clock matching): the session is resolved straight in
      * the database by today's date, an open status, and the current time
@@ -40,11 +39,15 @@ class SessionResolver
     private function resolveLocked(int $sessionId, Carbon $asOf): ?object
     {
         $sessions = $this->schema->sessionsTable();
+        $services = (string) config('attendance.tables.' . $this->schema->mode() . '.services', 'services');
 
-        $session = $this->schema->db()->table($sessions)
-            ->where('id', $sessionId)
-            ->where($this->schema->sessionDateColumn(), $asOf->format('Y-m-d'))
-            ->whereIn($this->schema->sessionStatusColumn(), ['scheduled', 'active'])
+        $session = $this->schema->db()->table($sessions . ' as asess')
+            ->leftJoin($services . ' as s', 'asess.service_id', '=', 's.id')
+            ->select('asess.*')
+            ->where('asess.id', $sessionId)
+            ->whereDate('asess.' . $this->schema->sessionDateColumn(), $asOf->format('Y-m-d'))
+            ->whereIn('asess.' . $this->schema->sessionStatusColumn(), ['scheduled', 'active'])
+            ->whereRaw('? BETWEEN COALESCE(asess.start_time, s.start_time, "00:00:00") AND COALESCE(asess.end_time, s.end_time, "23:59:59")', [$asOf->format('H:i:s')])
             ->first();
 
         if (!$session || $this->isBlackout($session, $asOf)) {

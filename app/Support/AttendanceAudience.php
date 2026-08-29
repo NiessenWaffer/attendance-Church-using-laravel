@@ -45,6 +45,8 @@ class AttendanceAudience
             $present = $presentBySession[(int) $session->id] ?? [];
             $expectedPresent = count(array_intersect_key($present, $eligible));
 
+            // Compatibility counts represent distinct present participants, not raw scan rows.
+            $session->record_count = count($present);
             $session->present_count = count($present);
             $session->participation_count = count($present);
             $session->expected_present_count = $expectedPresent;
