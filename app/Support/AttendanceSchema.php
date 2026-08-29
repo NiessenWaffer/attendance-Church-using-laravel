@@ -112,14 +112,19 @@ class AttendanceSchema
 
     public function presentCountSelectSql(string $sessionTable, string $recordsTable): string
     {
+        $memberColumn = $this->recordMemberCodeColumn() ?: $this->recordMemberIdColumn();
+        $count = $memberColumn !== null
+            ? 'COUNT(DISTINCT ' . $recordsTable . '.' . $memberColumn . ')'
+            : 'COUNT(*)';
+
         if ($this->explicitAttendanceStatus()) {
-            return '(SELECT COUNT(*) FROM ' . $recordsTable
+            return '(SELECT ' . $count . ' FROM ' . $recordsTable
                 . ' WHERE ' . $recordsTable . '.' . $this->recordSessionIdColumn() . ' = ' . $sessionTable . '.id'
                 . ' AND ' . $recordsTable . '.' . $this->recordStatusColumn() . ' = "present")';
         }
 
         // A check-in is present; a missing check-in is not an attendance record.
-        return '(SELECT COUNT(*) FROM ' . $recordsTable
+        return '(SELECT ' . $count . ' FROM ' . $recordsTable
             . ' WHERE ' . $recordsTable . '.' . $this->recordSessionIdColumn() . ' = ' . $sessionTable . '.id'
             . ' AND ' . $recordsTable . '.' . $this->recordCheckInColumn() . ' IS NOT NULL)';
     }
@@ -143,6 +148,11 @@ class AttendanceSchema
 
     public function sessionSelectColumns(string $s, string $r): array
     {
+        $memberColumn = $this->recordMemberCodeColumn() ?: $this->recordMemberIdColumn();
+        $recordCount = $memberColumn !== null
+            ? 'COUNT(DISTINCT ' . $r . '.' . $memberColumn . ')'
+            : 'COUNT(*)';
+
         return [
             $s . '.id',
             DB::raw($s . '.' . $this->sessionDateColumn() . ' as session_date'),
@@ -151,7 +161,9 @@ class AttendanceSchema
             DB::raw($s . '.' . $this->sessionStatusColumn() . ' as session_status'),
             $s . '.start_time',
             DB::raw($this->sessionClosedSelectSql($s) . ' as is_closed'),
-            DB::raw('(SELECT COUNT(*) FROM ' . $r . ' WHERE ' . $r . '.' . $this->recordSessionIdColumn() . ' = ' . $s . '.id) as record_count'),
+            DB::raw($this->hasColumn($s, 'service_id') ? $s . '.service_id' : 'NULL as service_id'),
+            DB::raw('(SELECT ' . $recordCount . ' FROM ' . $r . ' WHERE ' . $r . '.' . $this->recordSessionIdColumn() . ' = ' . $s . '.id) as record_count'),
+            DB::raw('(SELECT COUNT(*) FROM ' . $r . ' WHERE ' . $r . '.' . $this->recordSessionIdColumn() . ' = ' . $s . '.id) as raw_record_count'),
             DB::raw($this->presentCountSelectSql($s, $r) . ' as present_count'),
         ];
     }

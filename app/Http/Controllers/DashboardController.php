@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\ApiResponse;
 use App\Support\AttendanceSchema;
+use App\Support\AttendanceAudience;
 use App\Support\CacheHelper;
 use App\Services\DashboardReminderService;
 use App\Services\FollowupService;
@@ -48,10 +49,7 @@ class DashboardController extends Controller
             ->first();
 
         if ($latestSession) {
-            $latestSession->attendance_rate = AttendanceSchema::attendanceRate(
-                (int) $latestSession->present_count,
-                (int) $membersActive
-            );
+            (new AttendanceAudience($schema, $external))->enrich(collect([$latestSession]));
         }
 
             $recentSessions = $db->table($sessions)
@@ -61,6 +59,7 @@ class DashboardController extends Controller
             ->orderBy($sessions . '.id', 'desc')
             ->limit(5)
             ->get();
+            (new AttendanceAudience($schema, $external))->enrich($recentSessions);
 
          return [
             'members' => [
@@ -77,7 +76,7 @@ class DashboardController extends Controller
             'latest_session'   => $latestSession,
             'recent_sessions'  => $recentSessions,
             'followups'      => $followups,
-            'analytics'      => $this->analytics(),
+            'analytics'      => $this->analytics($external),
         ];
         });
 
@@ -98,6 +97,7 @@ class DashboardController extends Controller
             $records = $schema->recordsTable();
             $sessionIdColumn = $schema->recordSessionIdColumn();
             $memberCol = $schema->recordMemberCodeColumn() ?: $schema->recordMemberIdColumn();
+            $memberIdentityField = $schema->mode() === 'prod' ? 'external_id' : 'member_code';
 
             $fetch = app(MemberFetchService::class);
             $external = $fetch->list();
@@ -123,7 +123,7 @@ class DashboardController extends Controller
                 $ministryCounts = [];
 
                 foreach ($external as $member) {
-                    if (!isset($recordCodeSet[$member['member_code']])) {
+                    if (!isset($recordCodeSet[$member[$memberIdentityField] ?? null])) {
                         continue;
                     }
 
@@ -161,7 +161,7 @@ class DashboardController extends Controller
                 $monthlySet = array_flip($monthlyAttended);
 
                 foreach ($external as $member) {
-                    if (!isset($monthlySet[$member['member_code']])) {
+                    if (!isset($monthlySet[$member[$memberIdentityField] ?? null])) {
                         continue;
                     }
 
@@ -268,7 +268,7 @@ class DashboardController extends Controller
         return ApiResponse::success($data);
     }
 
-    private function analytics(): array
+    private function analytics(array $external): array
     {
         $schema = app(AttendanceSchema::class);
         $db = $schema->db();
@@ -276,25 +276,46 @@ class DashboardController extends Controller
         $records = $schema->recordsTable();
         $overallRate = null;
         $recordTotal = $db->table($records)->count();
-        $activeMembers = count(array_filter(app(MemberFetchService::class)->list(), function ($member) {
-            return ($member['membership_status'] ?? '') === 'active';
-        }));
         $eligibleSessions = $db->table($sessions)
-            ->where($schema->sessionDateColumn(), '<=', now()->format('Y-m-d'))
+            ->select(...$schema->sessionSelectColumns($sessions, $records))
             ->where($schema->sessionStatusColumn(), '!=', 'cancelled')
+            ->where(function ($query) use ($schema) {
+                $query->where($schema->sessionDateColumn(), '<', now()->format('Y-m-d'))
+                    ->orWhere(function ($query) use ($schema) {
+                        $query->where($schema->sessionDateColumn(), now()->format('Y-m-d'))
+                            ->where(function ($query) {
+                                $query->whereNull('start_time')
+                                    ->orWhere('start_time', '<=', now()->format('H:i:s'));
+                            });
+                    });
+            })
+            ->get();
+        (new AttendanceAudience($schema, $external))->enrich($eligibleSessions);
+        $opportunityTotal = (int) $eligibleSessions->sum('eligible_member_count');
+        $expectedPresentTotal = (int) $eligibleSessions->sum('expected_present_count');
+        $serviceParticipations = (int) $eligibleSessions->sum('participation_count');
+        $guestOtherParticipations = (int) $eligibleSessions->sum('guest_other_count');
+        $memberColumn = $schema->recordMemberCodeColumn() ?: $schema->recordMemberIdColumn();
+        $uniqueAttendeeDays = $memberColumn === null ? 0 : $db->table($records . ' as unique_records')
+            ->join($sessions . ' as unique_sessions', 'unique_sessions.id', '=', 'unique_records.' . $schema->recordSessionIdColumn())
+            ->where('unique_sessions.' . $schema->sessionDateColumn(), '<=', now()->format('Y-m-d'))
+            ->where('unique_sessions.' . $schema->sessionStatusColumn(), '!=', 'cancelled')
+            ->whereRaw('(' . $schema->attendanceStatusSelectSql('unique_records', 'unique_sessions') . ') = ?', ['present'])
+            ->select('unique_sessions.' . $schema->sessionDateColumn(), 'unique_records.' . $memberColumn)
+            ->distinct()
+            ->get()
             ->count();
 
-        if ($recordTotal > 0) {
-            $presentTotal = $schema->recordStatusColumn()
-                ? $db->table($records)->where($schema->recordStatusColumn(), 'present')->count()
-                : $db->table($records)->whereNotNull($schema->recordCheckInColumn())->count();
-            $overallRate = AttendanceSchema::attendanceRate((int) $presentTotal, $activeMembers * $eligibleSessions);
+        if ($eligibleSessions->isNotEmpty()) {
+            $overallRate = AttendanceSchema::attendanceRate($expectedPresentTotal, $opportunityTotal);
         }
 
         $trend = $db->table($sessions)
             ->select(
                 DB::raw($sessions . '.' . $schema->sessionDateColumn() . ' as session_date'),
                 DB::raw($sessions . '.' . $schema->sessionTitleColumn() . ' as session_title'),
+                $sessions . '.id',
+                DB::raw($schema->hasColumn($sessions, 'service_id') ? $sessions . '.service_id' : 'NULL as service_id'),
                 DB::raw('(SELECT COUNT(*) FROM ' . $records . ' WHERE ' . $records . '.' . $schema->recordSessionIdColumn() . ' = ' . $sessions . '.id) as record_count'),
                 DB::raw($schema->presentCountSelectSql($sessions, $records) . ' as present_count')
             )
@@ -309,15 +330,8 @@ class DashboardController extends Controller
             ->limit(7)
             ->get()
             ->reverse()
-            ->values()
-            ->map(function ($session) use ($activeMembers) {
-                $session->attendance_rate = AttendanceSchema::attendanceRate(
-                    (int) $session->present_count,
-                    $activeMembers
-                );
-
-                return $session;
-            });
+            ->values();
+        (new AttendanceAudience($schema, $external))->enrich($trend);
 
         $statuses = ['present', 'absent', 'excused'];
         $statusBreakdown = [];
@@ -359,42 +373,56 @@ class DashboardController extends Controller
 
         $monthStart = Carbon::today()->startOfMonth()->subMonths(5);
 
-        $presentExpr = $schema->recordStatusColumn()
-            ? 'SUM(CASE WHEN ' . $records . '.' . $schema->recordStatusColumn() . ' = "present" THEN 1 ELSE 0 END)'
-            : 'SUM(CASE WHEN ' . $records . '.' . $schema->recordCheckInColumn() . ' IS NOT NULL THEN 1 ELSE 0 END)';
-
-        $monthlyRow = $db->table($records)
+        $memberColumn = $schema->recordMemberCodeColumn() ?: $schema->recordMemberIdColumn();
+        $monthlyRows = $memberColumn === null ? collect() : $db->table($records)
             ->select(
-                DB::raw('DATE_FORMAT(' . $sessions . '.' . $schema->sessionDateColumn() . ', "%Y-%m") as month'),
-                DB::raw('COUNT(*) as total'),
-                DB::raw($presentExpr . ' as present')
+                $records . '.' . $schema->recordSessionIdColumn() . ' as session_id',
+                $records . '.' . $memberColumn . ' as member_identifier',
+                $sessions . '.' . $schema->sessionDateColumn() . ' as session_date'
             )
             ->join($sessions, $sessions . '.id', '=', $records . '.' . $schema->recordSessionIdColumn())
             ->where($sessions . '.' . $schema->sessionDateColumn(), '>=', $monthStart->format('Y-m-d'))
-            ->groupBy(DB::raw('DATE_FORMAT(' . $sessions . '.' . $schema->sessionDateColumn() . ', "%Y-%m")'))
-            ->orderBy(DB::raw('DATE_FORMAT(' . $sessions . '.' . $schema->sessionDateColumn() . ', "%Y-%m")'))
-            ->get()
-            ->keyBy('month');
+            ->where($sessions . '.' . $schema->sessionDateColumn(), '<=', now()->format('Y-m-d'))
+            ->where($sessions . '.' . $schema->sessionStatusColumn(), '!=', 'cancelled')
+            ->whereRaw('(' . $schema->attendanceStatusSelectSql($records, $sessions) . ') = ?', ['present'])
+            ->distinct()
+            ->get();
+        $monthlyParticipations = [];
+        $monthlyUniqueDays = [];
+
+        foreach ($monthlyRows as $row) {
+            $month = substr((string) $row->session_date, 0, 7);
+            $member = (string) $row->member_identifier;
+            $monthlyParticipations[$month][(int) $row->session_id . ':' . $member] = true;
+            $monthlyUniqueDays[$month][(string) $row->session_date . ':' . $member] = true;
+        }
 
         $monthly = [];
 
         for ($i = 5; $i >= 0; $i--) {
             $month = Carbon::today()->startOfMonth()->subMonths($i);
             $key = $month->format('Y-m');
-            $row = $monthlyRow->get($key);
+            $participations = isset($monthlyParticipations[$key]) ? count($monthlyParticipations[$key]) : 0;
+            $uniqueDays = isset($monthlyUniqueDays[$key]) ? count($monthlyUniqueDays[$key]) : 0;
 
             $monthly[] = [
                 'month'   => $month->format('Y-m'),
                 'label'   => $month->format('M'),
-                'present' => (int) ($row->present ?? 0),
-                'total'   => (int) ($row->total ?? 0),
+                'present' => $participations,
+                'service_participations' => $participations,
+                'unique_attendee_days' => $uniqueDays,
             ];
         }
 
         return [
             'overall_rate'     => $overallRate,
+            'rate_basis'       => 'target_audience_member_opportunities',
             'record_total'     => (int) $recordTotal,
-            'opportunity_total'=> (int) ($activeMembers * $eligibleSessions),
+            'opportunity_total'=> $opportunityTotal,
+            'expected_participations' => $expectedPresentTotal,
+            'service_participations' => $serviceParticipations,
+            'guest_other_participations' => $guestOtherParticipations,
+            'unique_attendee_days' => (int) $uniqueAttendeeDays,
             'trend'            => $trend,
             'status_breakdown' => $statusBreakdown,
             'type_breakdown'   => $typeBreakdown,

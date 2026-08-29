@@ -5,9 +5,13 @@ axios.defaults.headers.common.Accept = 'application/json';
 
 axios.interceptors.request.use((config) => {
   const token = localStorage.getItem('cas_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const headers = config && config.headers ? { ...config.headers } : {};
+  if (token) headers.Authorization = `Bearer ${token}`;
 
-  return config;
+  return {
+    ...config,
+    headers,
+  };
 });
 
 axios.interceptors.response.use(

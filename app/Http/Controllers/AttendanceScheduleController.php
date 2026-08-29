@@ -52,11 +52,16 @@ class AttendanceScheduleController extends Controller
                 'services.is_active'
             );
 
-        $type = $request->input('type');
-        if ($type === 'default') {
+        $origin = $request->input('origin');
+        if ($origin === 'default') {
             $query->where('is_default', 1);
-        } elseif ($type === 'custom') {
+        } elseif ($origin === 'custom') {
             $query->where('is_default', 0);
+        }
+
+        $serviceType = $request->input('service_type');
+        if (in_array($serviceType, ['worship', 'prayer', 'youth'], true)) {
+            $query->where('service_type', $serviceType);
         }
 
         $status = $request->input('status');
@@ -106,7 +111,7 @@ class AttendanceScheduleController extends Controller
             'start_date'      => ['nullable', 'date_format:Y-m-d'],
             'end_date'        => ['nullable', 'date_format:Y-m-d'],
             'start_time'      => array_merge(['date_format:H:i'], $forUpdate ? ['nullable'] : ['required']),
-            'end_time'        => ['nullable', 'date_format:H:i'],
+            'end_time'        => array_merge(['date_format:H:i'], $forUpdate ? ['nullable'] : ['required']),
             'ministries'      => ['nullable', 'array'],
         ];
     }
@@ -164,11 +169,16 @@ class AttendanceScheduleController extends Controller
                 'end_time' => 'The end time must be after the start time.',
             ]);
         }
+
+        if (empty($validated['end_time'])) {
+            throw ValidationException::withMessages([
+                'end_time' => 'An end time is required.',
+            ]);
+        }
     }
 
     public function create(Request $request)
     {
-        $this->normalizeLegacyServiceType($request);
         $validated = $request->validate($this->rules());
         $data = $this->serviceData($validated);
         $this->assertValidSchedule($data);
@@ -194,11 +204,12 @@ class AttendanceScheduleController extends Controller
             return ApiResponse::notFound();
         }
 
-        $this->normalizeLegacyServiceType($request);
         $validated = $request->validate($this->rules(true));
         $validated = $this->normalizeAliases($validated);
         $existing = (array) $this->repo->find('services', $id);
         $source = array_merge($existing, $validated);
+
+        $this->assertDefaultIdentity($existing, $source);
 
         if (!array_key_exists('schedule_day', $validated)
             && count(array_intersect(['recurrence_type', 'day_of_week', 'day_of_month'], array_keys($validated))) > 0) {
@@ -248,7 +259,7 @@ class AttendanceScheduleController extends Controller
             $this->repo->update('services', $id, ['is_active' => $isActive]);
 
             return $isActive
-                ? ['cancelled' => 0, 'skipped_attended' => 0]
+                ? $this->scheduleService->synchronizeFutureSessions((int) $id)
                 : $this->scheduleService->cancelFutureSessions((int) $id);
         });
 
@@ -379,7 +390,7 @@ class AttendanceScheduleController extends Controller
 
         if ($recurrenceType === 'once') {
             $specificDate = $validated['specific_date'] ?? $startDate ?? null;
-            $startDate = $startDate ?? $specificDate;
+            $startDate = $specificDate;
         }
 
         if ($startDate === null) {
@@ -422,20 +433,31 @@ class AttendanceScheduleController extends Controller
         return $validated;
     }
 
-    private function normalizeLegacyServiceType(Request $request): void
+    private function assertDefaultIdentity(array $existing, array $source): void
     {
-        $field = $request->has('service_type') ? 'service_type' : ($request->has('session_type') ? 'session_type' : null);
-
-        if ($field === null || !in_array($request->input($field), ['default', 'custom'], true)) {
+        if (empty($existing['is_default'])) {
             return;
         }
 
-        $description = strtolower(trim((string) $request->input('name', $request->input('schedule_name', '')))
-            . ' ' . trim((string) $request->input('description', $request->input('session_title', ''))));
-        $serviceType = strpos($description, 'youth') !== false
-            ? 'youth'
-            : (strpos($description, 'prayer') !== false ? 'prayer' : 'worship');
+        $canonical = collect(ScheduleService::DEFAULT_SCHEDULES)->first(function ($schedule) use ($existing) {
+            return $schedule['schedule_name'] === $existing['name'];
+        });
 
-        $request->merge([$field => $serviceType]);
+        if (!$canonical) {
+            throw ValidationException::withMessages([
+                'name' => 'This built-in schedule has no recognized canonical identity and cannot be edited safely.',
+            ]);
+        }
+
+        $expectedDay = self::WEEKDAYS[$canonical['day_of_week']];
+        if (($source['name'] ?? null) !== $canonical['schedule_name']
+            || ($source['recurrence_type'] ?? null) !== $canonical['recurrence_type']
+            || (int) ($source['day_of_week'] ?? -1) !== $canonical['day_of_week']
+            || ($source['schedule_day'] ?? null) !== $expectedDay
+            || ($source['service_type'] ?? null) !== $canonical['session_type']) {
+            throw ValidationException::withMessages([
+                'name' => 'Built-in schedule names and recurrence rules cannot be changed.',
+            ]);
+        }
     }
 }

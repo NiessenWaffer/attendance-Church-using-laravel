@@ -7,15 +7,15 @@
         <span class="stat-strip-value">{{ sessions.length }}</span>
       </div>
       <div class="stat-strip-item">
-        <span class="stat-strip-label">Total Present</span>
+        <span class="stat-strip-label">Service Participations</span>
         <span class="stat-strip-value">{{ summaryPresent }}</span>
       </div>
       <div class="stat-strip-item">
-        <span class="stat-strip-label">Member Opportunities</span>
+        <span class="stat-strip-label">Target Audience Opportunities</span>
         <span class="stat-strip-value">{{ summaryOpportunities }}</span>
       </div>
       <div class="stat-strip-item stat-strip-item--emph">
-        <span class="stat-strip-label">Attendance Rate</span>
+        <span class="stat-strip-label">Target Audience Rate</span>
         <span class="stat-strip-value">{{ summaryRate }}%</span>
       </div>
       <div class="stat-strip-live">
@@ -72,7 +72,7 @@
               <strong>{{ session.session_title }}</strong>
               <small>{{ formatTime12(session.start_time) || 'Time not set' }} · {{ session.session_type || 'Service' }}</small>
             </span>
-            <span class="session-count"><b>{{ session.present_count || 0 }}</b><small>/ {{ session.eligible_member_count || 0 }} members</small><small class="session-rate" :class="rateTone(session)">{{ attendanceRate(session) }}% rate</small></span>
+            <span class="session-count"><b>{{ session.expected_present_count || 0 }}</b><small>/ {{ session.eligible_member_count || 0 }} expected</small><small v-if="session.guest_other_count" class="session-rate">+ {{ session.guest_other_count }} guest / other</small><small class="session-rate" :class="rateTone(session)">{{ attendanceRate(session) }}% audience rate</small></span>
             <span class="status-tag" :class="session.is_closed ? 'status-inactive' : 'status-active'">{{ session.is_closed ? 'Closed' : 'Open' }}</span>
           </button>
         </div>
@@ -233,7 +233,7 @@ export default {
     recordCount() { return this.recordRows.length; },
 
     summaryPresent() {
-      return this.sessions.reduce((sum, s) => sum + (Number(s.present_count) || 0), 0);
+      return this.sessions.reduce((sum, s) => sum + (Number(s.participation_count) || 0), 0);
     },
 
     summaryRecords() {
@@ -245,7 +245,8 @@ export default {
     },
 
     summaryRate() {
-      return this.summaryOpportunities > 0 ? Math.round((this.summaryPresent / this.summaryOpportunities) * 100) : 0;
+      const expected = this.sessions.reduce((sum, s) => sum + (Number(s.expected_present_count) || 0), 0);
+      return this.summaryOpportunities > 0 ? Math.round((expected / this.summaryOpportunities) * 100) : 0;
     },
 
     filteredRecordRows() {

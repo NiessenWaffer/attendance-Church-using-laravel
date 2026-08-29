@@ -62,6 +62,11 @@ class AttendanceQuery
             $query->where($records . '.' . $schema->recordSessionIdColumn(), $sessionId);
         }
 
+        $serviceId = $request->input('service_id', $request->input('schedule_id'));
+        if ($serviceId !== null && $serviceId !== '' && $schema->hasColumn($sessions, 'service_id')) {
+            $query->where($sessions . '.service_id', $serviceId);
+        }
+
         $status = $request->input('attendance_status');
         if ($status !== null && $status !== '') {
             if ($schema->recordStatusColumn()) {

@@ -74,8 +74,11 @@
           <b-table-column label="Sunday" field="date" sortable>
             <template v-slot="props">{{ props.row.date }}</template>
           </b-table-column>
-          <b-table-column label="Present" field="present" numeric>
+          <b-table-column label="Unique Attendees" field="unique_attendees" numeric>
             <template v-slot="props">{{ props.row.present }}</template>
+          </b-table-column>
+          <b-table-column label="Service Participations" field="service_participations" numeric>
+            <template v-slot="props">{{ props.row.service_participations }}</template>
           </b-table-column>
           <b-table-column label="Missed" field="missed" numeric>
             <template v-slot="props">{{ props.row.missed }}</template>
@@ -129,9 +132,9 @@
 
     <section class="report-overview report-overview--service">
       <div class="report-ranking">
-        <div class="report-ranking-head"><span>Strongest sessions</span><small>By attendance rate</small></div>
+        <div class="report-ranking-head"><span>Strongest sessions</span><small>By target audience rate</small></div>
         <div v-if="bySession.length" class="ranking-list">
-          <div v-for="row in bySession.slice(0, 3)" :key="row.id || row.session_title" class="ranking-row">
+          <div v-for="row in strongestSessions" :key="row.id || row.session_title" class="ranking-row">
             <span>{{ row.session_title }}</span><b>{{ row.attendance_rate }}%</b>
           </div>
         </div>
@@ -156,13 +159,16 @@
           <b-table-column label="Date" field="session_date" sortable width="110">
             <template v-slot="props">{{ props.row.session_date }}</template>
           </b-table-column>
-          <b-table-column label="Records" field="record_count" numeric width="90">
-            <template v-slot="props">{{ props.row.record_count }}</template>
+          <b-table-column label="Participants" field="participation_count" numeric width="100">
+            <template v-slot="props">{{ props.row.participation_count }}</template>
           </b-table-column>
-          <b-table-column label="Present" field="present_count" numeric width="90">
-            <template v-slot="props">{{ props.row.present_count }}</template>
+          <b-table-column label="Expected" field="expected_present_count" numeric width="90">
+            <template v-slot="props">{{ props.row.expected_present_count }} / {{ props.row.eligible_member_count }}</template>
           </b-table-column>
-          <b-table-column label="Rate" field="attendance_rate" width="180">
+          <b-table-column label="Guest / Other" field="guest_other_count" numeric width="105">
+            <template v-slot="props">{{ props.row.guest_other_count }}</template>
+          </b-table-column>
+          <b-table-column label="Audience Rate" field="attendance_rate" width="180">
             <template v-slot="props">
               <div class="rate-cell">
                 <div class="rate-track">
@@ -196,6 +202,7 @@ export default {
       sessions: [],
       summaryData: { statuses: {}, total: 0, rate: 0 },
       sundayData: { overview: {}, rows: [] },
+      generalData: { overview: {}, rows: [] },
       youthData: { overview: {}, rows: [] },
       filters: { date_from: '', date_to: '', session_id: '', attendance_status: '', ministry: '' },
       loading: false,
@@ -226,12 +233,17 @@ export default {
       return Array.isArray(this.youthData.rows) ? this.youthData.rows : [];
     },
 
+    strongestSessions() {
+      return Array.isArray(this.summaryData.strongest_sessions) ? this.summaryData.strongest_sessions : [];
+    },
+
     summaryStats() {
       const sunday = this.sundayOverview;
       return [
         { label: 'Active Members', value: sunday.active_members || 0 },
-        { label: 'Sunday Present', value: sunday.present || 0 },
-        { label: 'Sunday Missed', value: sunday.missed || 0 },
+        { label: 'Sunday Unique Attendee-Days', value: sunday.unique_attendee_days || 0 },
+        { label: 'Sunday Service Participations', value: sunday.service_participations || 0 },
+        { label: 'All-Date Unique Attendee-Days', value: (this.generalData.overview || {}).unique_attendee_days || 0 },
         { label: 'Sundays', value: sunday.sundays || 0 },
         { label: 'Sunday Rate', value: (sunday.rate || 0) + '%', emph: true },
       ];
@@ -281,6 +293,7 @@ export default {
         this.summaryData = summaryPayload.data || this.summaryData;
         this.bySession = Array.isArray(this.summaryData.by_session) ? this.summaryData.by_session : [];
         this.sundayData = this.summaryData.sunday || { overview: {}, rows: [] };
+        this.generalData = this.summaryData.general || { overview: {}, rows: [] };
         this.youthData = this.summaryData.youth || { overview: {}, rows: [] };
       } catch (e) {
         if (requestId !== this.loadRequestSeq) return;

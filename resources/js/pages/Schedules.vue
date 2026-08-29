@@ -9,9 +9,14 @@
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </b-select>
-          <b-select v-model="filters.type" @input="loadSchedules">
-            <option value="">All Types</option>
+          <b-select v-model="filters.service_type" @input="loadSchedules">
+            <option value="">All Categories</option>
             <option v-for="type in serviceTypeOptions" :key="type.value" :value="type.value">{{ type.label }}</option>
+          </b-select>
+          <b-select v-model="filters.origin" @input="loadSchedules">
+            <option value="">All Origins</option>
+            <option value="default">Built-in</option>
+            <option value="custom">Custom</option>
           </b-select>
            <b-button type="is-dark" size="is-small" @click="openCreate">+ Add Service</b-button>
            <b-button type="is-light" size="is-small" @click="rangeOpen = true">Generate Range</b-button>
@@ -96,20 +101,23 @@
         </div>
         <form class="form-grid" @submit.prevent="saveSchedule">
           <div class="form-section-title">Service</div>
-          <b-field label="Service Name" class="span-2"><b-input v-model="form.name" required /></b-field>
+          <b-field label="Service Name" class="span-2"><b-input v-model="form.name" :disabled="editingBuiltIn" required /></b-field>
           <b-field label="Short Description" class="span-2"><b-input v-model="form.description" /></b-field>
 
           <div class="form-section-title">Schedule</div>
           <b-field label="Schedule Day">
-            <b-select v-model="form.schedule_day" expanded>
+            <b-select v-model="form.schedule_day" :disabled="editingBuiltIn" expanded>
               <option v-for="day in scheduleDayOptions" :key="day" :value="day">{{ day }}</option>
             </b-select>
           </b-field>
           <b-field v-if="form.schedule_day === 'One-time'" label="Specific Date">
             <b-input v-model="form.specific_date" type="date" required />
           </b-field>
-          <b-field v-else label="Service Type">
-            <b-select v-model="form.service_type" expanded>
+          <b-field v-else-if="form.schedule_day === 'Monthly'" label="Day of Month">
+            <b-input v-model.number="form.day_of_month" type="number" min="1" max="31" required />
+          </b-field>
+          <b-field label="Service Category">
+            <b-select v-model="form.service_type" :disabled="editingBuiltIn" expanded>
               <option v-for="type in formServiceTypeOptions" :key="type.value" :value="type.value">{{ type.label }}</option>
             </b-select>
           </b-field>
@@ -195,13 +203,11 @@ export default {
   data() {
     return {
        schedules: [], selectedSchedule: null, loading: false, generating: false, rangeGenerating: false, rangeOpen: false, rangeFrom: null, rangeTo: null, saving: false, formOpen: false, editingSchedule: null, error: '', loadRequestSeq: 0,
-      filters: { search: '', status: '', type: '' },
+       filters: { search: '', status: '', service_type: '', origin: '' },
       serviceTypeOptions: [
         { value: 'worship', label: 'Worship' },
         { value: 'prayer', label: 'Prayer' },
         { value: 'youth', label: 'Youth' },
-        { value: 'default', label: 'Default' },
-        { value: 'custom', label: 'Custom' },
       ],
       weekdays: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
       hourOptions: Array.from({ length: 12 }, (_, i) => String(i + 1)),
@@ -219,7 +225,7 @@ export default {
   },
   computed: {
     scheduleDayOptions() {
-      return [...this.weekdays, 'Daily', 'One-time'];
+      return [...this.weekdays, 'Daily', 'Monthly', 'One-time'];
     },
     formServiceTypeOptions() {
       const options = this.serviceTypeOptions.slice();
@@ -233,22 +239,26 @@ export default {
       return Boolean(this.selectedSchedule)
         && (this.selectedSchedule.is_active === true || Number(this.selectedSchedule.is_active) === 1);
     },
+    editingBuiltIn() {
+      return Boolean(this.editingSchedule) && Number(this.editingSchedule.is_default) === 1;
+    },
   },
   mounted() { this.loadSchedules(); },
   beforeDestroy() { this.loadRequestSeq += 1; },
   methods: {
     async loadSchedules() {
       const requestId = ++this.loadRequestSeq;
-      const params = { search: this.filters.search, status: this.filters.status };
-      const serviceType = this.filters.type;
+      const params = {
+        search: this.filters.search,
+        status: this.filters.status,
+        service_type: this.filters.service_type,
+        origin: this.filters.origin,
+      };
       this.loading = true;
       try {
         const payload = await api.get('/api/services', params);
         if (requestId !== this.loadRequestSeq) return;
-        const schedules = Array.isArray(payload.data) ? payload.data : [];
-        this.schedules = serviceType
-          ? schedules.filter(row => String(row.service_type || row.session_type || '').toLowerCase() === serviceType)
-          : schedules;
+        this.schedules = Array.isArray(payload.data) ? payload.data : [];
         if (this.selectedSchedule) this.selectedSchedule = this.schedules.find(row => Number(row.id) === Number(this.selectedSchedule.id)) || null;
       } catch (e) {
         if (requestId === this.loadRequestSeq) this.$buefy.toast.open({ message: errorMessage(e, 'Could not load services.'), type: 'is-danger' });
@@ -275,7 +285,7 @@ export default {
     openCreate() {
       this.editingSchedule = null; this.error = '';
       this.form = {
-        name: '', description: '', schedule_day: 'Sunday', specific_date: '', service_type: 'default',
+        name: '', description: '', schedule_day: 'Sunday', specific_date: '', day_of_month: null, service_type: 'worship',
         start: parseTime24('08:00') || { hour: '8', minute: '00', period: 'AM' },
         end: parseTime24('12:00') || { hour: '12', minute: '00', period: 'PM' },
         ministries: [],
@@ -289,6 +299,7 @@ export default {
         description: row.description || row.session_title || '',
         schedule_day: row.schedule_day || 'Weekly',
         specific_date: row.specific_date || '',
+        day_of_month: row.day_of_month || null,
         service_type: row.service_type || row.session_type || '',
         start: parseTime24(row.start_time) || { hour: '8', minute: '00', period: 'AM' },
         end: parseTime24(row.end_time) || { hour: '12', minute: '00', period: 'PM' },
@@ -299,22 +310,17 @@ export default {
     async saveSchedule() {
       this.saving = true; this.error = '';
       try {
-        const serviceType = this.form.schedule_day === 'One-time' ? 'custom' : this.form.service_type;
         const payload = {
           name: this.form.name,
           description: this.form.description,
           schedule_day: this.form.schedule_day,
           specific_date: this.form.schedule_day === 'One-time' ? (this.form.specific_date || null) : null,
+          day_of_month: this.form.schedule_day === 'Monthly' ? this.form.day_of_month : null,
           start_time: this.form.start ? composeTime24(this.form.start.hour, this.form.start.minute, this.form.start.period) : null,
           end_time: this.form.end ? composeTime24(this.form.end.hour, this.form.end.minute, this.form.end.period) : null,
           ministries: this.form.ministries,
+          service_type: this.form.service_type,
         };
-        const existingType = this.editingSchedule
-          ? (this.editingSchedule.service_type || this.editingSchedule.session_type || '')
-          : '';
-        if (!this.editingSchedule || serviceType !== existingType) {
-          payload.service_type = serviceType;
-        }
         const url = this.editingSchedule ? `/api/services/${this.editingSchedule.id}` : '/api/services';
         const res = this.editingSchedule ? await api.patch(url, payload) : await api.post(url, payload);
         this.formOpen = false; this.$buefy.toast.open({ message: res.message || 'Service saved.', type: 'is-success' }); await this.loadSchedules();

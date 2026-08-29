@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\MemberFetchService;
 use App\Support\AttendanceQuery;
+use App\Support\AttendanceAudience;
 use App\Support\ApiResponse;
 use App\Support\AttendanceSchema;
 use App\Support\AuditLogger;
@@ -36,16 +37,20 @@ class ReportController extends Controller
             }
         }
 
-        $statusRow = (clone $base)
-            ->select(DB::raw($schema->attendanceStatusSelectSql($recordsTable, $sessionsTable) . ' as attendance_status'), DB::raw('COUNT(*) as total'))
-            ->groupBy(DB::raw($schema->attendanceStatusSelectSql($recordsTable, $sessionsTable)))
-            ->pluck('total', 'attendance_status')
-            ->all();
-
         $statuses = ['present' => 0, 'absent' => 0, 'excused' => 0];
-
-        foreach ($statuses as $status => $count) {
-            $statuses[$status] = (int) ($statusRow[$status] ?? 0);
+        $statusMemberColumn = $schema->recordMemberCodeColumn() ?: $schema->recordMemberIdColumn();
+        $statusRows = (clone $base)
+            ->select(
+                DB::raw($schema->attendanceStatusSelectSql($recordsTable, $sessionsTable) . ' as attendance_status'),
+                $recordsTable . '.' . $schema->recordSessionIdColumn(),
+                $recordsTable . '.' . $statusMemberColumn
+            )
+            ->distinct()
+            ->get();
+        foreach ($statusRows as $row) {
+            if (array_key_exists($row->attendance_status, $statuses)) {
+                $statuses[$row->attendance_status]++;
+            }
         }
 
         $total = array_sum($statuses);
@@ -54,47 +59,47 @@ class ReportController extends Controller
         $healthMemberColumn = $schema->mode() === 'prod'
             ? $schema->recordMemberIdColumn()
             : $schema->recordMemberCodeColumn();
-        if ($healthMemberColumn !== null) {
-            $healthBase->whereIn($recordsTable . '.' . $healthMemberColumn, array_keys($members));
-        }
         $this->excludeFutureSessions($healthBase, $sessionsTable, $schema);
-        $healthSessionCount = $this->eligibleSessionCount($request, $schema);
-        $rateDenominator = count($members) * $healthSessionCount;
-        $healthPresent = (clone $healthBase)
-            ->whereRaw('(' . $schema->attendanceStatusSelectSql($recordsTable, $sessionsTable) . ') = ?', ['present'])
-            ->count();
-        $rate = AttendanceSchema::attendanceRate((int) $healthPresent, $rateDenominator);
-
         $bySession = (clone $healthBase)
             ->select(
                 $sessionsTable . '.id',
+                DB::raw($schema->hasColumn($sessionsTable, 'service_id') ? $sessionsTable . '.service_id' : 'NULL as service_id'),
                 DB::raw($sessionsTable . '.' . $schema->sessionTitleColumn() . ' as session_title'),
                 DB::raw($sessionsTable . '.' . $schema->sessionDateColumn() . ' as session_date'),
-                DB::raw('COUNT(*) as record_count'),
-                DB::raw('SUM(CASE WHEN (' . $schema->attendanceStatusSelectSql($recordsTable, $sessionsTable) . ') = "present" THEN 1 ELSE 0 END) as present_count')
+                DB::raw('COUNT(DISTINCT ' . $recordsTable . '.' . $healthMemberColumn . ') as record_count'),
+                DB::raw('COUNT(*) as raw_record_count')
             )
             ->groupBy($sessionsTable . '.id', $sessionsTable . '.' . $schema->sessionTitleColumn(), $sessionsTable . '.' . $schema->sessionDateColumn())
             ->orderByDesc($sessionsTable . '.' . $schema->sessionDateColumn())
             ->orderByDesc($sessionsTable . '.id')
-            ->limit(30)
             ->get();
 
-        foreach ($bySession as $session) {
-            $session->attendance_rate = AttendanceSchema::attendanceRate(
-                (int) $session->present_count,
-                count($members)
-            );
-            $session->eligible_member_count = count($members);
-        }
+        $audience = new AttendanceAudience($schema, $members, $this->hasMemberScope($request, $ministry));
+        $audience->enrich($bySession);
+        $rateDenominator = (int) $bySession->sum('eligible_member_count');
+        $expectedPresent = (int) $bySession->sum('expected_present_count');
+        $serviceParticipations = (int) $bySession->sum('participation_count');
+        $guestOtherParticipations = (int) $bySession->sum('guest_other_count');
+        $rate = AttendanceSchema::attendanceRate($expectedPresent, $rateDenominator);
+        $strongestSessions = $bySession->sort(function ($a, $b) {
+            return [(int) $b->attendance_rate, (int) $b->expected_present_count, (string) $b->session_date]
+                <=> [(int) $a->attendance_rate, (int) $a->expected_present_count, (string) $a->session_date];
+        })->take(3)->values();
+        $bySession = $bySession->take(30)->values();
 
         return ApiResponse::success([
             'statuses'   => $statuses,
             'total'      => $total,
             'rate'       => $rate,
             'rate_denominator' => $rateDenominator,
-            'rate_basis' => 'active_member_opportunities',
+            'rate_basis' => 'target_audience_member_opportunities_in_reported_sessions',
+            'expected_participations' => $expectedPresent,
+            'service_participations' => $serviceParticipations,
+            'guest_other_participations' => $guestOtherParticipations,
             'by_session' => $bySession,
+            'strongest_sessions' => $strongestSessions,
             'sunday'     => $this->buildSundaySummary($request, $members),
+            'general'    => $this->buildSundaySummary($request, $members, false),
             'youth'      => $this->buildYouthSummary($request, $members),
             'ministries' => $fetch->ministries(),
         ]);
@@ -131,16 +136,14 @@ class ReportController extends Controller
         $healthMemberColumn = $schema->mode() === 'prod'
             ? $schema->recordMemberIdColumn()
             : $schema->recordMemberCodeColumn();
-        if ($healthMemberColumn !== null) {
-            $bySessionQuery->whereIn($recordsTable . '.' . $healthMemberColumn, array_keys($members));
-        }
         $this->excludeFutureSessions($bySessionQuery, $sessionsTable, $schema);
         $bySession = $bySessionQuery->select(
                 $sessionsTable . '.id',
+                DB::raw($schema->hasColumn($sessionsTable, 'service_id') ? $sessionsTable . '.service_id' : 'NULL as service_id'),
                 DB::raw($sessionsTable . '.' . $schema->sessionTitleColumn() . ' as session_title'),
                 DB::raw($sessionsTable . '.' . $schema->sessionDateColumn() . ' as session_date'),
-                DB::raw('COUNT(*) as record_count'),
-                DB::raw('SUM(CASE WHEN (' . $schema->attendanceStatusSelectSql($recordsTable, $sessionsTable) . ') = "present" THEN 1 ELSE 0 END) as present_count')
+                DB::raw('COUNT(DISTINCT ' . $recordsTable . '.' . $healthMemberColumn . ') as record_count'),
+                DB::raw('COUNT(*) as raw_record_count')
             )
             ->groupBy($sessionsTable . '.id', $sessionsTable . '.' . $schema->sessionTitleColumn(), $sessionsTable . '.' . $schema->sessionDateColumn())
             ->orderByDesc($sessionsTable . '.' . $schema->sessionDateColumn())
@@ -148,13 +151,7 @@ class ReportController extends Controller
             ->limit(50)
             ->get();
 
-        foreach ($bySession as $session) {
-            $session->attendance_rate = AttendanceSchema::attendanceRate(
-                (int) $session->present_count,
-                count($members)
-            );
-            $session->eligible_member_count = count($members);
-        }
+        (new AttendanceAudience($schema, $members, $this->hasMemberScope($request, $ministry)))->enrich($bySession);
 
         $query = AttendanceQuery::forHistory($request);
         if ($this->hasMemberScope($request, $ministry) && $memberColumn !== null) {
@@ -180,6 +177,7 @@ class ReportController extends Controller
             'dateFrom'  => $request->input('date_from'),
             'dateTo'    => $request->input('date_to'),
             'ministry'  => $ministry,
+            'general'   => $this->buildSundaySummary($request, $members, false),
         ], 'attendance-report-' . now()->format('Ymd-His') . '.pdf', 'portrait');
     }
 
@@ -231,6 +229,8 @@ class ReportController extends Controller
             'member_id' => ['nullable', 'string', 'max:150'],
             'member_code' => ['nullable', 'string', 'max:150'],
             'ministry' => ['nullable', 'string', 'max:150'],
+            'service_id' => ['nullable', 'integer', 'min:1'],
+            'schedule_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
         if ($request->filled('date_from') && $request->filled('date_to')
@@ -252,29 +252,6 @@ class ReportController extends Controller
             || trim((string) $request->input('member_id', '')) !== '';
     }
 
-    private function eligibleSessionCount(Request $request, AttendanceSchema $schema): int
-    {
-        $sessionsTable = $schema->sessionsTable();
-        $dateColumn = $schema->sessionDateColumn();
-        $query = $schema->db()->table($sessionsTable)
-            ->where($sessionsTable . '.' . $schema->sessionStatusColumn(), '!=', 'cancelled');
-        $this->excludeFutureSessions($query, $sessionsTable, $schema);
-
-        if ($request->filled('session_id')) {
-            $query->where($sessionsTable . '.id', $request->input('session_id'));
-        }
-
-        if ($request->filled('date_from')) {
-            $query->where($sessionsTable . '.' . $dateColumn, '>=', $request->input('date_from'));
-        }
-
-        if ($request->filled('date_to')) {
-            $query->where($sessionsTable . '.' . $dateColumn, '<=', $request->input('date_to'));
-        }
-
-        return (int) $query->count();
-    }
-
     private function excludeFutureSessions($query, string $sessionsTable, AttendanceSchema $schema): void
     {
         $dateColumn = $sessionsTable . '.' . $schema->sessionDateColumn();
@@ -293,7 +270,7 @@ class ReportController extends Controller
         });
     }
 
-    private function buildSundaySummary(Request $request, array $members): array
+    private function buildSundaySummary(Request $request, array $members, bool $sundayOnly = true): array
     {
         $schema = app(AttendanceSchema::class);
         $db = $schema->db();
@@ -306,18 +283,28 @@ class ReportController extends Controller
             : $schema->recordMemberCodeColumn();
 
         if ($memberCodeColumn === null) {
-            return ['rows' => [], 'overview' => ['active_members' => count($members), 'sundays' => 0, 'present' => 0, 'missed' => 0, 'rate' => 0]];
+            return ['rows' => [], 'overview' => ['active_members' => count($members), 'sundays' => 0, 'dates' => 0, 'present' => 0, 'service_participations' => 0, 'missed' => 0, 'rate' => 0]];
         }
 
         $sessionsQuery = $db->table($sessionsTable)
             ->select('id', DB::raw($sessionsTable . '.' . $dateColumn . ' as session_date'))
-            ->whereRaw('DAYOFWEEK(' . $sessionsTable . '.' . $dateColumn . ') = 1')
             ->where($sessionsTable . '.' . $schema->sessionStatusColumn(), '!=', 'cancelled');
+        if ($sundayOnly) {
+            $sundaySql = $schema->db()->getDriverName() === 'sqlite'
+                ? "strftime('%w', " . $sessionsTable . '.' . $dateColumn . ") = '0'"
+                : 'DAYOFWEEK(' . $sessionsTable . '.' . $dateColumn . ') = 1';
+            $sessionsQuery->whereRaw($sundaySql);
+        }
         $this->excludeFutureSessions($sessionsQuery, $sessionsTable, $schema);
 
         $sessionId = $request->input('session_id');
         if ($sessionId !== null && $sessionId !== '') {
             $sessionsQuery->where($sessionsTable . '.id', $sessionId);
+        }
+
+        $serviceId = $request->input('service_id', $request->input('schedule_id'));
+        if ($serviceId !== null && $serviceId !== '' && $schema->hasColumn($sessionsTable, 'service_id')) {
+            $sessionsQuery->where($sessionsTable . '.service_id', $serviceId);
         }
 
         $dateFrom = $request->input('date_from');
@@ -343,7 +330,7 @@ class ReportController extends Controller
         }
 
         if (empty($sessionDateById)) {
-            return ['rows' => [], 'overview' => ['active_members' => count($members), 'sundays' => 0, 'present' => 0, 'missed' => 0, 'rate' => 0]];
+            return ['rows' => [], 'overview' => ['active_members' => count($members), 'sundays' => 0, 'dates' => 0, 'present' => 0, 'service_participations' => 0, 'missed' => 0, 'rate' => 0]];
         }
 
         $recordsQuery = $db->table($recordsTable)
@@ -360,6 +347,7 @@ class ReportController extends Controller
         $records = $recordsQuery->get();
 
         $presentByDate = [];
+        $participationsByDate = [];
 
         foreach ($records as $record) {
             $code = (string) $record->member_code;
@@ -375,6 +363,7 @@ class ReportController extends Controller
             }
 
             $presentByDate[$date][$code] = true;
+            $participationsByDate[$date][(int) $record->session_id . ':' . $code] = true;
         }
 
         $rows = [];
@@ -394,6 +383,8 @@ class ReportController extends Controller
             $rows[] = [
                 'date' => $date,
                 'present' => $present,
+                'unique_attendees' => $present,
+                'service_participations' => isset($participationsByDate[$date]) ? count($participationsByDate[$date]) : 0,
                 'missed' => $missed,
                 'rate' => AttendanceSchema::attendanceRate($present, $activeMembers),
             ];
@@ -404,7 +395,10 @@ class ReportController extends Controller
             'overview' => [
                 'active_members' => $activeMembers,
                 'sundays' => count($dateList),
+                'dates' => count($dateList),
                 'present' => $presentTotal,
+                'unique_attendee_days' => $presentTotal,
+                'service_participations' => array_sum(array_map('count', $participationsByDate)),
                 'missed' => $missedTotal,
                 'rate' => AttendanceSchema::attendanceRate($presentTotal, $presentTotal + $missedTotal),
             ],
@@ -451,13 +445,20 @@ class ReportController extends Controller
                 DB::raw($sessionsTable . '.' . $typeColumn . ' as session_type'),
                 DB::raw($sessionsTable . '.' . $titleColumn . ' as session_title')
             )
-            ->whereRaw('DAYOFWEEK(' . $sessionsTable . '.' . $dateColumn . ') = 1')
+            ->whereRaw($schema->db()->getDriverName() === 'sqlite'
+                ? "strftime('%w', " . $sessionsTable . '.' . $dateColumn . ") = '0'"
+                : 'DAYOFWEEK(' . $sessionsTable . '.' . $dateColumn . ') = 1')
             ->where($sessionsTable . '.' . $schema->sessionStatusColumn(), '!=', 'cancelled');
         $this->excludeFutureSessions($sessionsQuery, $sessionsTable, $schema);
 
         $sessionId = $request->input('session_id');
         if ($sessionId !== null && $sessionId !== '') {
             $sessionsQuery->where($sessionsTable . '.id', $sessionId);
+        }
+
+        $serviceId = $request->input('service_id', $request->input('schedule_id'));
+        if ($serviceId !== null && $serviceId !== '' && $schema->hasColumn($sessionsTable, 'service_id')) {
+            $sessionsQuery->where($sessionsTable . '.service_id', $serviceId);
         }
 
         $dateFrom = $request->input('date_from');

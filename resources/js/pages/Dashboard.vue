@@ -58,7 +58,7 @@
             </span>
             <strong class="stat-row-value">
               <template v-if="latestSession">
-                {{ latestSession.present_count }}<span class="stat-slash">/</span>{{ latestSession.record_count }}
+                 {{ latestSession.expected_present_count }}<span class="stat-slash">/</span>{{ latestSession.eligible_member_count }}
                 <span class="rate-badge">{{ latestSession.attendance_rate !== null ? latestSession.attendance_rate + '%' : '—' }}</span>
               </template>
               <span v-else>—</span>
@@ -73,9 +73,9 @@
         <div class="analytics-grid">
           <!-- Overall Rate -->
           <div class="analytics-panel">
-            <div class="analytics-panel-title">Overall Attendance Rate</div>
+            <div class="analytics-panel-title">Target Audience Attendance Rate</div>
             <div class="overall-rate-value">{{ analytics.overall_rate !== null ? analytics.overall_rate + '%' : '—' }}</div>
-            <div class="overall-rate-sub">{{ analytics.opportunity_total }} member opportunities</div>
+            <div class="overall-rate-sub">{{ analytics.expected_participations }} expected participations / {{ analytics.opportunity_total }} opportunities · {{ analytics.service_participations }} total participations · {{ analytics.unique_attendee_days }} unique attendee-days</div>
           </div>
 
           <!-- Attendance Trend -->
@@ -86,7 +86,7 @@
                 v-for="(point, i) in analytics.trend"
                 :key="i"
                 class="trend-col"
-                :title="`${point.session_title} — ${point.present_count}/${point.record_count} present`"
+                :title="`${point.session_title} — ${point.expected_present_count}/${point.eligible_member_count} target audience; ${point.guest_other_count} guest/other`"
               >
                 <span class="trend-value">{{ point.attendance_rate }}%</span>
                 <div class="trend-bar-area">
@@ -100,12 +100,12 @@
 
           <!-- Monthly Attendance -->
           <div class="analytics-panel">
-            <div class="analytics-panel-title">Monthly Attendance</div>
+            <div class="analytics-panel-title">Monthly Unique Attendee-Days</div>
             <div v-if="analytics.monthly.length" class="trend-chart">
               <div v-for="(m, i) in analytics.monthly" :key="i" class="trend-col">
-                <span class="trend-value">{{ m.present }}</span>
+                <span class="trend-value">{{ m.unique_attendee_days }}</span>
                 <div class="trend-bar-area">
-                  <div class="trend-bar is-monthly" :style="countBarStyle(m.present)"></div>
+                  <div class="trend-bar is-monthly" :style="countBarStyle(m.unique_attendee_days)"></div>
                 </div>
                 <span class="trend-label">{{ m.label }}</span>
               </div>
@@ -162,8 +162,8 @@
               <span class="text-neutral">{{ props.row.session_date }}</span>
             </b-table-column>
 
-            <b-table-column field="present" label="Present" width="100" v-slot="props">
-              <span class="text-neutral">{{ props.row.present_count || 0 }} / {{ props.row.record_count || 0 }}</span>
+            <b-table-column field="present" label="Expected Audience" width="160" v-slot="props">
+              <span class="text-neutral">{{ props.row.expected_present_count || 0 }} / {{ props.row.eligible_member_count || 0 }} expected<span v-if="props.row.guest_other_count"> · +{{ props.row.guest_other_count }} other</span></span>
             </b-table-column>
 
             <b-table-column field="is_closed" label="Status" width="90" v-slot="props">
@@ -302,6 +302,10 @@ export default {
         overall_rate: null,
         record_total: 0,
         opportunity_total: 0,
+        expected_participations: 0,
+        service_participations: 0,
+        guest_other_participations: 0,
+        unique_attendee_days: 0,
         trend: [],
         status_breakdown: [
           { status: 'present', count: 0 },
@@ -436,7 +440,7 @@ export default {
     },
 
     countBarStyle(count) {
-      const max = Math.max(...this.analytics.monthly.map(m => m.present), 1);
+      const max = Math.max(...this.analytics.monthly.map(m => m.unique_attendee_days || 0), 1);
       const height = count > 0 ? Math.max(4, Math.round((count / max) * 100)) : 2;
       return { height: `${height}%` };
     },

@@ -168,7 +168,8 @@
         <table class="summary-row" style="width:100%; border-collapse:collapse;">
             <tr>
                 <td class="sr-pair"><span class="sr-label">Active Members </span><span class="sr-value">{{ $sOverview['active_members'] ?? 0 }}</span></td>
-                <td class="sr-pair"><span class="sr-label">Sunday Scans </span><span class="sr-value">{{ $sOverview['present'] ?? 0 }}</span></td>
+                <td class="sr-pair"><span class="sr-label">Unique Attendee-Days </span><span class="sr-value">{{ $sOverview['unique_attendee_days'] ?? 0 }}</span></td>
+                <td class="sr-pair"><span class="sr-label">Service Participations </span><span class="sr-value">{{ $sOverview['service_participations'] ?? 0 }}</span></td>
                 <td class="sr-pair"><span class="sr-label">Missed </span><span class="sr-value">{{ $sOverview['missed'] ?? 0 }}</span></td>
                 <td class="sr-pair"><span class="sr-label">Sundays </span><span class="sr-value">{{ $sOverview['sundays'] ?? 0 }}</span></td>
                 <td class="sr-pair"><span class="sr-label">Health Rate </span><span class="sr-value">{{ $sOverview['rate'] ?? 0 }}%</span></td>
@@ -179,7 +180,8 @@
             <thead>
                 <tr>
                     <th>Sunday Date</th>
-                    <th class="r">Present</th>
+                    <th class="r">Unique Attendees</th>
+                    <th class="r">Service Participations</th>
                     <th class="r">Missed</th>
                     <th class="r">Rate</th>
                 </tr>
@@ -189,11 +191,12 @@
                     <tr>
                         <td><b>{{ $row['date'] }}</b></td>
                         <td class="r">{{ $row['present'] }}</td>
+                        <td class="r">{{ $row['service_participations'] }}</td>
                         <td class="r">{{ $row['missed'] }}</td>
                         <td class="r"><b>{{ $row['rate'] }}%</b></td>
                     </tr>
                 @empty
-                    <tr><td colspan="4" class="empty-note">No Sunday records in range.</td></tr>
+                    <tr><td colspan="5" class="empty-note">No Sunday records in range.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -250,9 +253,10 @@
                 <tr>
                     <th>Service</th>
                     <th>Date</th>
-                    <th class="r">Records</th>
-                    <th class="r">Present</th>
-                    <th class="r">Rate</th>
+                    <th class="r">Participants</th>
+                    <th class="r">Expected / Audience</th>
+                    <th class="r">Guest / Other</th>
+                    <th class="r">Audience Rate</th>
                 </tr>
             </thead>
             <tbody>
@@ -260,12 +264,13 @@
                     <tr>
                         <td><b>{{ $session->session_title }}</b></td>
                         <td>{{ $session->session_date }}</td>
-                        <td class="r">{{ $session->record_count }}</td>
-                        <td class="r"><b>{{ $session->present_count }}</b></td>
+                        <td class="r">{{ $session->participation_count }}</td>
+                        <td class="r"><b>{{ $session->expected_present_count }} / {{ $session->eligible_member_count }}</b></td>
+                        <td class="r">{{ $session->guest_other_count }}</td>
                         <td class="r">{{ $session->attendance_rate }}%</td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="empty-note">No services in range.</td></tr>
+                    <tr><td colspan="6" class="empty-note">No services in range.</td></tr>
                 @endforelse
             </tbody>
         </table>

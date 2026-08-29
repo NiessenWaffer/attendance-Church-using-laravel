@@ -20,6 +20,7 @@ class ScheduleService
             'start_date'      => '2026-01-01',
             'end_date'        => null,
             'start_time'      => '08:00:00',
+            'end_time'        => '12:00:00',
             'is_default'      => 1,
         ],
         [
@@ -32,6 +33,7 @@ class ScheduleService
             'start_date'      => '2026-01-01',
             'end_date'        => null,
             'start_time'      => '18:30:00',
+            'end_time'        => '20:00:00',
             'is_default'      => 1,
         ],
         [
@@ -44,6 +46,7 @@ class ScheduleService
             'start_date'      => '2026-01-01',
             'end_date'        => null,
             'start_time'      => '17:00:00',
+            'end_time'        => '19:00:00',
             'is_default'      => 1,
         ],
     ];
@@ -52,21 +55,32 @@ class ScheduleService
     {
         $existing = DB::table('services')
             ->where('is_default', 1)
-            ->pluck('name')
-            ->all();
+            ->get()
+            ->keyBy('name');
 
         foreach (self::DEFAULT_SCHEDULES as $schedule) {
             $weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
             $scheduleDay = $weekdays[$schedule['day_of_week']] ?? 'Sunday';
 
-            if (in_array($schedule['schedule_name'], $existing)) {
+            if ($existing->has($schedule['schedule_name'])) {
+                $existingSchedule = $existing->get($schedule['schedule_name']);
+                $updates = [
+                    'schedule_day' => $scheduleDay,
+                    'service_type' => $schedule['session_type'],
+                    'recurrence_type' => $schedule['recurrence_type'],
+                    'day_of_week' => $schedule['day_of_week'],
+                    'day_of_month' => $schedule['day_of_month'],
+                    'specific_date' => null,
+                ];
+
+                if (empty($existingSchedule->end_time)) {
+                    $updates['end_time'] = $schedule['end_time'];
+                }
+
                 DB::table('services')
                     ->where('name', $schedule['schedule_name'])
                     ->where('is_default', 1)
-                    ->update([
-                        'schedule_day' => $scheduleDay,
-                        'service_type' => $schedule['session_type'],
-                    ]);
+                    ->update($updates);
 
                 continue;
             }
@@ -76,6 +90,7 @@ class ScheduleService
                 'description'    => $schedule['session_title'],
                 'schedule_day'   => $scheduleDay,
                 'start_time'     => $schedule['start_time'],
+                'end_time'       => $schedule['end_time'],
                 'service_type'   => $schedule['session_type'],
                 'recurrence_type'=> $schedule['recurrence_type'],
                 'day_of_week'    => $schedule['day_of_week'],
@@ -209,11 +224,7 @@ class ScheduleService
             ->get();
 
         foreach ($sessions as $session) {
-            $status = 'scheduled';
-
-            if ($session->start_time && $now->format('H:i:s') >= $session->start_time) {
-                $status = 'active';
-            }
+            $status = $this->statusForSession($session, $now);
 
             $statusColumn = $schema->sessionStatusColumn();
 
@@ -248,7 +259,7 @@ class ScheduleService
     public function synchronizeFutureSessions(int $serviceId): array
     {
         $schedule = DB::table('services')->where('id', $serviceId)->first();
-        $result = ['updated' => 0, 'cancelled' => 0, 'skipped_attended' => 0];
+        $result = ['updated' => 0, 'restored' => 0, 'cancelled' => 0, 'generated' => 0, 'skipped_attended' => 0];
 
         if (!$schedule) {
             return $result;
@@ -258,8 +269,20 @@ class ScheduleService
         $db = $schema->db();
         $sessionsTable = $schema->sessionsTable();
         $sessionDateColumn = $schema->sessionDateColumn();
+        $statusColumn = $schema->sessionStatusColumn();
+        $today = Carbon::today()->format('Y-m-d');
+        $horizon = $db->table($sessionsTable)
+            ->where('service_id', $serviceId)
+            ->where($sessionDateColumn, '>=', $today)
+            ->max($sessionDateColumn) ?: $today;
 
-        foreach ($this->futureScheduledSessions($serviceId)->get() as $session) {
+        $sessions = $db->table($sessionsTable)
+            ->where('service_id', $serviceId)
+            ->where($sessionDateColumn, '>=', $today)
+            ->whereIn($statusColumn, ['scheduled', 'active', 'cancelled'])
+            ->get();
+
+        foreach ($sessions as $session) {
             if ($this->sessionHasAttendance($session->id)) {
                 $result['skipped_attended']++;
                 continue;
@@ -267,13 +290,21 @@ class ScheduleService
 
             if (!$schedule->is_active || !$this->isDueOn((array) $schedule, Carbon::parse($session->{$sessionDateColumn}))) {
                 $db->table($sessionsTable)->where('id', $session->id)->update([
-                    $schema->sessionStatusColumn() => 'cancelled',
+                    $statusColumn => 'cancelled',
                     'updated_at' => now(),
                 ]);
-                $result['cancelled']++;
+                if ($session->{$statusColumn} !== 'cancelled') {
+                    $result['cancelled']++;
+                }
                 continue;
             }
 
+            $newStatus = $session->{$statusColumn};
+            if ($newStatus === 'cancelled') {
+                $newStatus = $session->{$sessionDateColumn} === $today
+                    ? $this->statusForSession($session, Carbon::now())
+                    : 'scheduled';
+            }
             $db->table($sessionsTable)->where('id', $session->id)->update([
                 $schema->sessionTitleColumn() => $schedule->name,
                 'service_time' => $schedule->name,
@@ -281,9 +312,18 @@ class ScheduleService
                 'end_time' => $schedule->end_time,
                 'schedule_type' => $schedule->recurrence_type,
                 $schema->sessionTypeColumn() => $schedule->service_type,
+                $statusColumn => $newStatus,
                 'updated_at' => now(),
             ]);
+            if ($session->{$statusColumn} === 'cancelled') {
+                $result['restored']++;
+            }
             $result['updated']++;
+        }
+
+        if ($schedule->is_active) {
+            $result['generated'] = $this->generateRange($today, $horizon, $serviceId);
+            $this->autoUpdateSessionStatuses();
         }
 
         return $result;
@@ -337,25 +377,31 @@ class ScheduleService
         $schema = app(AttendanceSchema::class);
         $sessions = $schema->sessionsTable();
         $today = Carbon::today()->format('Y-m-d');
-        $time = Carbon::now()->format('H:i:s');
-
         $query = $schema->db()->table($sessions)
             ->where('service_id', $serviceId);
 
         if ($includeCancelled) {
-            $query->whereIn($schema->sessionStatusColumn(), ['scheduled', 'cancelled']);
+            $query->whereIn($schema->sessionStatusColumn(), ['scheduled', 'active', 'cancelled']);
         } else {
-            $query->where($schema->sessionStatusColumn(), 'scheduled');
+            $query->whereIn($schema->sessionStatusColumn(), ['scheduled', 'active']);
         }
 
-        return $query
-            ->where(function ($query) use ($schema, $today, $time) {
-                $query->where($schema->sessionDateColumn(), '>', $today)
-                    ->orWhere(function ($query) use ($schema, $today, $time) {
-                        $query->where($schema->sessionDateColumn(), $today)
-                            ->where('start_time', '>', $time);
-                    });
-            });
+        return $query->where($schema->sessionDateColumn(), '>=', $today);
+    }
+
+    private function statusForSession($session, Carbon $now): string
+    {
+        $currentTime = $now->format('H:i:s');
+
+        if ($session->end_time && $currentTime >= $session->end_time) {
+            return 'completed';
+        }
+
+        if ($session->start_time && $currentTime >= $session->start_time) {
+            return 'active';
+        }
+
+        return 'scheduled';
     }
 
     private function sessionHasAttendance(int $sessionId): bool

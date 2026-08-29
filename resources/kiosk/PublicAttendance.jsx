@@ -27,7 +27,9 @@ const API_ANNOUNCEMENT_VIDEO = "/api/system/settings/announcement-video";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const KIOSK_API_KEY_STORAGE = "cas_kiosk_api_key";
+const KIOSK_SESSION_LOCK_STORAGE = "cas_kiosk_session_lock";
 const KIOSK_SETUP_MESSAGE = `This kiosk is not provisioned. Set the ${KIOSK_API_KEY_STORAGE} localStorage value on this device, then reload.`;
+const SESSION_LOCK_REQUIRED_MESSAGE = "No session is locked. Ask an operator to select a live session and press Lock Session before scanning.";
 
 function getKioskHeaders() {
   try {
@@ -187,19 +189,12 @@ function isLiveSessionForServer(session, serverDate, serverTime) {
 
 function compareAutoSessions(a, b) {
   const typeRank = session => String(session?.service_type || "").toLowerCase() === "custom" ? 0 : 1;
-  const scheduleRank = session => String(session?.schedule_type || "").toLowerCase() === "one-time" ? 0 : 1;
+  const scheduleRank = session => ["once", "one-time", "one_time"].includes(String(session?.schedule_type || "").toLowerCase()) ? 0 : 1;
   const start = session => timeToMinutes(session?.start_time) ?? 0;
   return typeRank(a) - typeRank(b)
     || scheduleRank(a) - scheduleRank(b)
     || start(b) - start(a)
     || Number(b?.id || 0) - Number(a?.id || 0);
-}
-
-function pickPrimaryLiveSession(sessions, serverDate, serverTime) {
-  return (sessions || [])
-    .filter(session => isLiveSessionForServer(session, serverDate, serverTime))
-    .slice()
-    .sort(compareAutoSessions)[0] || null;
 }
 
 function sessionTimeLabel(session) {
@@ -208,6 +203,46 @@ function sessionTimeLabel(session) {
   if (start && end) return `${start} - ${end}`;
   if (start) return `Starts ${start}`;
   return "Live now";
+}
+
+function sessionName(session) {
+  const title = String(session?.session_name || "").trim();
+  const service = String(session?.service_time || "").trim();
+  if (title && service && title.toLowerCase() !== service.toLowerCase()) return `${title} - ${service}`;
+  return title || service || "Service";
+}
+
+function exactSessionLabel(session) {
+  if (!session) return "";
+  return `${sessionName(session)} | ${session.session_date} | ${sessionTimeLabel(session)} | Session #${session.id}`;
+}
+
+function readStoredSessionLock() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(KIOSK_SESSION_LOCK_STORAGE) || "null");
+    return stored?.id != null && stored?.session_date ? stored : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function storeSessionLock(session) {
+  try {
+    if (!session) {
+      window.localStorage.removeItem(KIOSK_SESSION_LOCK_STORAGE);
+      return;
+    }
+    window.localStorage.setItem(KIOSK_SESSION_LOCK_STORAGE, JSON.stringify({
+      id: session.id,
+      session_date: session.session_date,
+      service_time: session.service_time,
+      session_name: session.session_name,
+      start_time: session.start_time,
+      end_time: session.end_time,
+    }));
+  } catch (_) {
+    // The in-memory lock remains valid when storage is unavailable.
+  }
 }
 
 function isCancelledSession(session) {
@@ -955,6 +990,86 @@ function AttendanceSummaryTable({ rows, total, loading, error }) {
   );
 }
 
+function SessionLockPanel({ sessions, lockedSession, recommendedSessionId, selectedId, onSelect, onLock, onUnlock, loading }) {
+  const hasSessions = sessions.length > 0;
+  const selectedIsLocked = lockedSession && String(selectedId) === String(lockedSession.id);
+
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", gap: 8, flexShrink: 0,
+      padding: "10px 12px", background: lockedSession ? "#eff6ff" : "#fff7ed",
+      borderBottom: `1px solid ${lockedSession ? "#93c5fd" : "#fdba74"}`,
+      fontFamily: FONT_STACK,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ minWidth: 0, flex: "1 1 260px" }}>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", color: lockedSession ? "#1d4ed8" : "#c2410c" }}>
+            {lockedSession ? "SESSION LOCKED" : "OPERATOR SESSION LOCK REQUIRED"}
+          </div>
+          <div style={{ marginTop: 2, fontSize: 13, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {lockedSession
+              ? exactSessionLabel(lockedSession)
+              : loading
+                ? "Loading today's live sessions..."
+                : hasSessions
+                  ? "Select the exact session below, then press Lock Session."
+                  : "No live session is available for check-in right now."}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "1 1 360px", justifyContent: "flex-end", flexWrap: "wrap" }}>
+          <select
+            aria-label="Live session to lock"
+            value={selectedId}
+            onChange={event => onSelect(event.target.value)}
+            disabled={!hasSessions}
+            style={{
+              flex: "1 1 220px", maxWidth: 420, minWidth: 0, height: 34, padding: "0 8px",
+              border: "1px solid #94a3b8", borderRadius: 4, background: "#ffffff", color: "#0f172a",
+              fontSize: 12, fontWeight: 600,
+            }}
+          >
+            {!hasSessions && <option value="">No live sessions</option>}
+            {sessions.map(session => (
+              <option key={session.id} value={String(session.id)}>
+                {exactSessionLabel(session)}{String(session.id) === String(recommendedSessionId) ? " (Recommended)" : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={onLock}
+            disabled={!hasSessions || !selectedId || selectedIsLocked}
+            style={{
+              height: 34, padding: "0 12px", border: 0, borderRadius: 4,
+              background: selectedIsLocked ? "#94a3b8" : "#1d4ed8", color: "#ffffff",
+              fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", cursor: selectedIsLocked ? "default" : "pointer",
+            }}
+          >
+            {selectedIsLocked ? "LOCKED" : lockedSession ? "CHANGE LOCK" : "LOCK SESSION"}
+          </button>
+          {lockedSession && (
+            <button
+              type="button"
+              onClick={onUnlock}
+              style={{
+                height: 34, padding: "0 10px", border: "1px solid #94a3b8", borderRadius: 4,
+                background: "#ffffff", color: "#475569", fontSize: 11, fontWeight: 700, cursor: "pointer",
+              }}
+            >
+              UNLOCK
+            </button>
+          )}
+        </div>
+      </div>
+      {!lockedSession && hasSessions && recommendedSessionId && (
+        <div style={{ fontSize: 10, color: "#9a3412" }}>
+          The recommended session is preselected for review only. Scans remain blocked until an operator locks it.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 export default function PublicAttendance() {
 
@@ -975,6 +1090,7 @@ export default function PublicAttendance() {
   const memberSearchRequestRef = useRef(0);
   const counterRef = useRef(null);
   const syncInFlightRef = useRef(false);
+  const lockedSessionRef = useRef(null);
 
   const [scanBuffer, setScanBuffer] = useState("");
   const [state, setState] = useState("idle"); // "idle" | "welcome" | "error" | "duplicate" | "loading" | "confirming"
@@ -1002,8 +1118,11 @@ export default function PublicAttendance() {
   const [pendingCount, setPendingCount] = useState(0);
   const [syncError, setSyncError] = useState("");
   const [credentialError, setCredentialError] = useState(() => getKioskHeaders() ? "" : KIOSK_SETUP_MESSAGE);
-  const [activeSession, setActiveSession] = useState(null);
+  const [lockedSession, setLockedSession] = useState(null);
   const [liveSessions, setLiveSessions] = useState([]);
+  const [recommendedSessionId, setRecommendedSessionId] = useState("");
+  const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [sessionsValidated, setSessionsValidated] = useState(false);
   const [attendanceSummaryRows, setAttendanceSummaryRows] = useState([]);
   const [attendanceSummaryTotal, setAttendanceSummaryTotal] = useState(0);
   const [attendanceSummaryLoading, setAttendanceSummaryLoading] = useState(true);
@@ -1168,17 +1287,34 @@ export default function PublicAttendance() {
 
       const sessions = Array.isArray(data.sessions) ? data.sessions : [];
       const serverTime = data.server_time || "";
-      const primaryLive = pickPrimaryLiveSession(sessions, serverDate, serverTime);
+      const availableLiveSessions = sessions
+        .filter(session => isLiveSessionForServer(session, serverDate, serverTime))
+        .slice()
+        .sort(compareAutoSessions);
+      const primaryLive = availableLiveSessions[0] || null;
+      const storedLock = readStoredSessionLock();
+      const lockId = lockedSessionRef.current?.id ?? storedLock?.id;
+      const validatedLock = availableLiveSessions.find(session => String(session.id) === String(lockId)) || null;
 
-      setLiveSessions(primaryLive ? [primaryLive] : []);
-      setActiveSession(primaryLive);
+      setLiveSessions(availableLiveSessions);
+      setRecommendedSessionId(primaryLive ? String(primaryLive.id) : "");
+      lockedSessionRef.current = validatedLock;
+      setLockedSession(validatedLock);
+      if (validatedLock) {
+        storeSessionLock(validatedLock);
+        setSelectedSessionId(String(validatedLock.id));
+      } else {
+        if (lockId != null) storeSessionLock(null);
+        setSelectedSessionId(current => availableLiveSessions.some(session => String(session.id) === String(current))
+          ? current
+          : primaryLive ? String(primaryLive.id) : "");
+      }
+      setSessionsValidated(true);
       setAttendanceSummaryRows(buildAttendanceSummaryRows(sessions, serverDate, serverTime));
       setAttendanceSummaryTotal(Number(data.summary?.unique_member_count || 0));
       setAttendanceSummaryError("");
     } catch (error) {
       console.error("[SESSIONS] Failed to load attendance summary:", error);
-      setLiveSessions([]);
-      setActiveSession(null);
       setAttendanceSummaryError("summary_unavailable");
     } finally {
       setAttendanceSummaryLoading(false);
@@ -1613,10 +1749,35 @@ export default function PublicAttendance() {
     });
   };
 
-  const handleOfflineSubmission = async (input, selectedSession = activeSession) => {
+  const showSessionLockRequired = () => {
+    playKioskSound("error");
+    setErrorMsg(SESSION_LOCK_REQUIRED_MESSAGE);
+    showOverlay("error", WELCOME_DURATION, () => setErrorMsg(""));
+  };
+
+  const handleSessionLock = () => {
+    const selected = liveSessions.find(session => String(session.id) === String(selectedSessionId));
+    if (!selected) {
+      showSessionLockRequired();
+      return;
+    }
+    lockedSessionRef.current = selected;
+    setLockedSession(selected);
+    storeSessionLock(selected);
+    refocusSearch();
+  };
+
+  const handleSessionUnlock = () => {
+    lockedSessionRef.current = null;
+    setLockedSession(null);
+    storeSessionLock(null);
+    setSelectedSessionId(recommendedSessionId);
+    refocusSearch();
+  };
+
+  const handleOfflineSubmission = async (input, selectedSession) => {
     if (!selectedSession) {
-      setErrorMsg("No active schedule at this time");
-      showOverlay("error", WELCOME_DURATION, () => setErrorMsg(""));
+      showSessionLockRequired();
       return;
     }
 
@@ -1662,10 +1823,13 @@ export default function PublicAttendance() {
     });
   };
 
-  const resolveOfflineSession = (selectedSession = null) => selectedSession || activeSession || liveSessions[0] || null;
-
-  const handleScan = async (code, selectedSession = null) => {
+  const handleScan = async (code) => {
     if (!code) return;
+    const targetSession = lockedSessionRef.current;
+    if (!targetSession) {
+      showSessionLockRequired();
+      return;
+    }
     const headers = getKioskHeaders();
     if (!headers) {
       setCredentialError(KIOSK_SETUP_MESSAGE);
@@ -1675,7 +1839,6 @@ export default function PublicAttendance() {
     }
     stopBirthdayMelody();
     const scanId = ++lastScanIdRef.current;
-    const targetSession = resolveOfflineSession(selectedSession);
     const offlineSession = targetSession;
     
     try {
@@ -1685,7 +1848,7 @@ export default function PublicAttendance() {
       const res = await fetchWithTimeout(API_MEMBER_LOOKUP, {
         method: "POST",
         headers,
-        body: JSON.stringify({ member_id: code.trim(), session_id: targetSession?.id || null }),
+        body: JSON.stringify({ member_id: code.trim(), session_id: targetSession.id }),
       });
       
       const data = await res.json();
@@ -1744,8 +1907,13 @@ export default function PublicAttendance() {
     }
   };
 
-  const handleMemberCheckIn = async (memberRecord, selectedSession = null) => {
+  const handleMemberCheckIn = async (memberRecord) => {
     if (!memberRecord?.id) return;
+    const targetSession = lockedSessionRef.current;
+    if (!targetSession) {
+      showSessionLockRequired();
+      return;
+    }
     const headers = getKioskHeaders();
     if (!headers) {
       setCredentialError(KIOSK_SETUP_MESSAGE);
@@ -1755,7 +1923,6 @@ export default function PublicAttendance() {
     }
     stopBirthdayMelody();
     const scanId = ++lastScanIdRef.current;
-    const targetSession = resolveOfflineSession(selectedSession);
     const offlineSession = targetSession;
 
     try {
@@ -1764,7 +1931,7 @@ export default function PublicAttendance() {
       const res = await fetchWithTimeout(API_MEMBER_CHECK_IN, {
         method: "POST",
         headers,
-        body: JSON.stringify({ member_id: memberCode(memberRecord), session_id: targetSession?.id || null }),
+        body: JSON.stringify({ member_id: memberCode(memberRecord), session_id: targetSession.id }),
       });
 
       const data = await res.json();
@@ -1822,6 +1989,10 @@ export default function PublicAttendance() {
 
   const startMobileQrScan = useCallback(async () => {
     if (isQrScanning) return;
+    if (!lockedSessionRef.current) {
+      showSessionLockRequired();
+      return;
+    }
 
     if (!isSecureCameraContext()) {
       const httpsPort = "3443";
@@ -1912,12 +2083,12 @@ export default function PublicAttendance() {
   useEffect(() => {
     if (isMobile) return; // Never auto-start on mobile
     
-    if (state === "idle" && isQrSupported && !isQrScanning) {
+    if (state === "idle" && lockedSession && isQrSupported && !isQrScanning) {
       startMobileQrScan();
     } else if (state !== "idle" && isQrScanning) {
       stopQrScanner();
     }
-  }, [state, isQrSupported, isQrScanning, startMobileQrScan, stopQrScanner, isMobile]);
+  }, [state, lockedSession, isQrSupported, isQrScanning, startMobileQrScan, stopQrScanner, isMobile]);
 
   useEffect(() => () => {
     clearTimeout(timerRef.current);
@@ -1998,10 +2169,10 @@ export default function PublicAttendance() {
             </div>
           </div>
           <div className="mobile-header-right">
-            {liveSessions.length > 0 && (
+            {lockedSession && (
               <div className="mobile-live-badge">
                 <span className="live-dot" />
-                <span>Live</span>
+                <span>Locked</span>
               </div>
             )}
             {pendingCount > 0 && (
@@ -2053,7 +2224,7 @@ export default function PublicAttendance() {
               ) : (
                 liveSessions.map(session => (
                   <div key={session.id} className="aside-session-card">
-                    <div className="aside-session-name">{session.service_time}</div>
+                    <div className="aside-session-name">{sessionName(session)}{lockedSession && String(session.id) === String(lockedSession.id) ? " | LOCKED" : ""}</div>
                     <div className="aside-session-time">{sessionTimeLabel(session)}</div>
                   </div>
                 ))
@@ -2187,17 +2358,28 @@ export default function PublicAttendance() {
           )}
 
           {isMobile && (
-            <div className={`mobile-attend-for${liveSessions.length > 0 ? " mobile-attend-for--active" : " mobile-attend-for--empty"}`}>
-              {liveSessions.length > 0 ? (
+            <div className={`mobile-attend-for${lockedSession ? " mobile-attend-for--active" : " mobile-attend-for--empty"}`}>
+              {lockedSession ? (
                 <>
-                  <span className="mobile-attend-for-label">Current attend is:</span>
-                  <span className="mobile-attend-for-value">{liveSessions[0].service_time}</span>
+                  <span className="mobile-attend-for-label">Locked attendance session</span>
+                  <span className="mobile-attend-for-value">{exactSessionLabel(lockedSession)}</span>
                 </>
               ) : (
-                <span className="mobile-attend-for-empty">NO SERVICE IS CURRENTLY RUNNING</span>
+                <span className="mobile-attend-for-empty">NO SESSION LOCKED - SCANNING BLOCKED</span>
               )}
             </div>
           )}
+
+          <SessionLockPanel
+            sessions={liveSessions}
+            lockedSession={lockedSession}
+            recommendedSessionId={recommendedSessionId}
+            selectedId={selectedSessionId}
+            onSelect={setSelectedSessionId}
+            onLock={handleSessionLock}
+            onUnlock={handleSessionUnlock}
+            loading={!sessionsValidated && attendanceSummaryLoading}
+          />
 
           {/* Search / Scan Bar */}
           <div className="scan-bar">
@@ -2219,7 +2401,7 @@ export default function PublicAttendance() {
                       setScanBuffer("");
                     }
                   }}
-                  placeholder="Search name or scan code..."
+                  placeholder={lockedSession ? "Search name or scan code..." : "Lock a live session before scanning"}
                   autoFocus={false}
                 />
                 {isSearching && (
@@ -2262,7 +2444,7 @@ export default function PublicAttendance() {
                         setScanBuffer("");
                       }
                     }}
-                    placeholder={isOnline ? "Hold your QR code in front of the camera to record your attendance." : "Kiosk is OFFLINE — scanning locally..."}
+                    placeholder={!lockedSession ? "Operator must lock a live session before scanning." : isOnline ? "Hold your QR code in front of the camera to record your attendance." : "Kiosk is OFFLINE - scanning locally..."}
                     autoFocus
                   />
                 </div>
@@ -2303,14 +2485,14 @@ export default function PublicAttendance() {
 
                 {/* LEFT — attend banner + video + how-to strip */}
                 <div className="content-zone-left">
-                  <div className={`desktop-attend-for${liveSessions.length > 0 ? " desktop-attend-for--active" : " desktop-attend-for--empty"}`}>
-                    {liveSessions.length > 0 ? (
+                  <div className={`desktop-attend-for${lockedSession ? " desktop-attend-for--active" : " desktop-attend-for--empty"}`}>
+                    {lockedSession ? (
                       <>
-                        <span className="desktop-attend-for-label">You are Attending:</span>
-                        <span className="desktop-attend-for-value">{liveSessions[0].service_time}</span>
+                        <span className="desktop-attend-for-label">Locked Attendance Session:</span>
+                        <span className="desktop-attend-for-value" title={exactSessionLabel(lockedSession)}>{exactSessionLabel(lockedSession)}</span>
                       </>
                     ) : (
-                      <span className="desktop-attend-for-empty">NO SERVICE IS CURRENTLY RUNNING</span>
+                      <span className="desktop-attend-for-empty">NO SESSION LOCKED - SCANNING BLOCKED</span>
                     )}
                   </div>
                   <div className="content-zone-video">
@@ -2421,7 +2603,7 @@ export default function PublicAttendance() {
                 visible={state === "idle" && !isQrScanning}
                 total={attendanceSummaryTotal}
                 sessions={todaySessionRosters}
-                liveSessionId={activeSession?.id}
+                liveSessionId={lockedSession?.id || recommendedSessionId}
                 loading={todayRostersLoading}
               />
             )}

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\ApiResponse;
+use App\Support\AttendanceAudience;
 use App\Support\AttendanceSchema;
 use App\Support\AuditLogger;
 use App\Support\CacheHelper;
@@ -15,6 +16,11 @@ class AttendanceSessionController extends Controller
 {
     public function index(Request $request)
     {
+        $request->validate([
+            'service_id' => ['nullable', 'integer', 'min:1'],
+            'schedule_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
         app(ScheduleService::class)->ensureCurrent();
 
         $schema = app(AttendanceSchema::class);
@@ -53,20 +59,16 @@ class AttendanceSessionController extends Controller
             $query->where($sessions . '.' . $schema->sessionDateColumn(), '<=', $dateTo);
         }
 
+        $serviceId = $request->input('service_id', $request->input('schedule_id'));
+        if ($serviceId !== null && $serviceId !== '' && $schema->hasColumn($sessions, 'service_id')) {
+            $query->where($sessions . '.service_id', $serviceId);
+        }
+
         $sessionsList = $query->orderBy($sessions . '.' . $schema->sessionDateColumn(), 'desc')
             ->orderBy($sessions . '.start_time', 'desc')
             ->get();
 
-        $activeMembers = count(array_filter(app(MemberFetchService::class)->list(), function ($member) {
-            return ($member['membership_status'] ?? '') === 'active';
-        }));
-        $sessionsList->each(function ($session) use ($activeMembers) {
-            $session->eligible_member_count = $activeMembers;
-            $session->attendance_rate = AttendanceSchema::attendanceRate(
-                (int) $session->present_count,
-                $activeMembers
-            );
-        });
+        (new AttendanceAudience($schema, app(MemberFetchService::class)->list()))->enrich($sessionsList);
 
         return ApiResponse::success($sessionsList);
     }
