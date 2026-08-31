@@ -7,7 +7,7 @@
         <span class="stat-strip-value">{{ sessions.length }}</span>
       </div>
       <div class="stat-strip-item">
-        <span class="stat-strip-label">Participations</span>
+        <span class="stat-strip-label">Unique Members</span>
         <span class="stat-strip-value">{{ summaryPresent }}</span>
       </div>
       <div class="stat-strip-item">
@@ -53,6 +53,7 @@
 
         <!-- Table Meta Counter -->
         <div class="table-meta">
+          <span class="service-details-label">Service Details</span>
           <span>Showing <strong>{{ sessions.length }}</strong> session(s)</span>
           <span v-if="loading" class="loading-text">Loading...</span>
         </div>
@@ -248,6 +249,7 @@ export default {
       rosterSearch: '',
       rosterSort: 'newest',
       lastUpdated: '',
+      summaryUniqueMembers: null,
       sessionsRequestSeq: 0,
       attendanceRequestSeq: 0,
     };
@@ -257,11 +259,7 @@ export default {
     recordCount() { return this.recordRows.length; },
 
     summaryPresent() {
-      return this.sessions.reduce((sum, s) => sum + (Number(s.participation_count) || 0), 0);
-    },
-
-    summaryRecords() {
-      return this.sessions.reduce((sum, s) => sum + (Number(s.record_count) || 0), 0);
+      return this.summaryUniqueMembers === null ? 0 : this.summaryUniqueMembers;
     },
 
     summaryOpportunities() {
@@ -416,6 +414,10 @@ export default {
         const payload = await api.get('/api/attendance-sessions', params);
         if (requestId !== this.sessionsRequestSeq) return;
         this.sessions = payload && Array.isArray(payload.data) ? payload.data : [];
+        this.summaryUniqueMembers = this.backendUniqueMemberCount(payload, this.sessions);
+        if (this.summaryUniqueMembers === null) {
+          this.loadSummaryUniqueMembers(this.sessions, requestId);
+        }
 
         if (this.selectedSession) {
           const stillThere = this.sessions.find(s => Number(s.id) === Number(this.selectedSession.id));
@@ -430,6 +432,59 @@ export default {
         if (requestId === this.sessionsRequestSeq) {
           this.loading = false;
           this.lastUpdated = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+        }
+      }
+    },
+
+    backendUniqueMemberCount(payload, sessions) {
+      const data = payload && payload.data;
+      const candidates = [
+        payload && payload.unique_member_count,
+        payload && payload.unique_members,
+        payload && payload.unique_daily_members,
+        payload && payload.unique_attendee_days,
+        data && !Array.isArray(data) ? data.unique_member_count : null,
+        data && !Array.isArray(data) ? data.unique_members : null,
+        data && !Array.isArray(data) ? data.unique_daily_members : null,
+        data && !Array.isArray(data) ? data.unique_attendee_days : null,
+      ];
+      const count = candidates.find(value => value !== null && value !== undefined && value !== '');
+      if (count !== undefined) return Number(count) || 0;
+
+      const sessionCount = sessions.find(session => session.unique_member_count !== undefined);
+      return sessionCount && sessions.length === 1 ? Number(sessionCount.unique_member_count) || 0 : null;
+    },
+
+    async loadSummaryUniqueMembers(sessions, requestId) {
+      if (!sessions.length) {
+        this.summaryUniqueMembers = 0;
+        return;
+      }
+
+      try {
+        const payloads = await Promise.all(sessions.map(session => api.get(`/api/attendance-sessions/${session.id}/attendance`)));
+        if (requestId !== this.sessionsRequestSeq) return;
+
+        const identifiers = new Set();
+        payloads.forEach((payload, index) => {
+          const sessionDate = payload && payload.data && payload.data.session
+            ? payload.data.session.session_date
+            : sessions[index].session_date;
+          const records = payload && payload.data && Array.isArray(payload.data.records)
+            ? payload.data.records
+            : [];
+          records.forEach(record => {
+            const identifier = record.external_member_id || record.member_code || record.member_id;
+            if (identifier !== undefined && identifier !== null && String(identifier) !== '') {
+              identifiers.add(`${sessionDate || 'unknown-date'}|${String(identifier)}`);
+            }
+          });
+        });
+        this.summaryUniqueMembers = identifiers.size;
+      } catch (error) {
+        if (requestId === this.sessionsRequestSeq) {
+          this.summaryUniqueMembers = null;
+          console.error('Failed to calculate unique attendance members:', error);
         }
       }
     },

@@ -3,7 +3,7 @@
     <!-- Follow-up mode -->
     <div v-if="followupMode">
       <div class="toolbar history-toolbar">
-        <span class="history-mode-note">Active members with no attendance in the last 30 days.</span>
+           <span class="history-mode-note">Active members with no recorded attendance in the last 30 days.</span>
         <b-button type="is-light" size="is-small" @click="toggleFollowup">View All History</b-button>
         <b-button type="is-dark" size="is-small" :loading="loading" @click="load">Refresh</b-button>
       </div>
@@ -111,7 +111,8 @@
 
       <app-table-panel>
         <template #meta>
-          <span>Showing <strong>{{ records.length }}</strong> record(s)</span>
+           <span>Showing <strong>{{ records.length }}</strong> attendance record(s)</span>
+            <span v-if="records.length">Summary totals count each member once per service date.</span>
           <span v-if="loading" class="loading-text">Loading...</span>
         </template>
 
@@ -120,7 +121,7 @@
             <b-table-column label="Date" field="session_date" sortable width="110">
               <template v-slot="props">{{ props.row.session_date }}</template>
             </b-table-column>
-            <b-table-column label="Session" field="session_title" sortable>
+             <b-table-column label="Dated Service" field="session_title" sortable>
               <template v-slot="props">
                 <span class="cell-title">{{ props.row.session_title }}</span>
               </template>
@@ -138,7 +139,7 @@
                 </span>
               </template>
             </b-table-column>
-            <b-table-column label="Check-in" field="check_in_time" width="130">
+             <b-table-column label="Recorded At" field="check_in_time" width="130">
               <template v-slot="props">{{ formatTime(props.row.check_in_time) }}</template>
             </b-table-column>
             <b-table-column label="Remarks" field="remarks">
@@ -182,24 +183,31 @@ export default {
   computed: {
     summary() {
       const counts = { present: 0, absent: 0, excused: 0 };
+      const statusPriority = { absent: 1, excused: 2, present: 3 };
+      const statusByMemberDay = {};
       this.records.forEach((record) => {
-        if (counts[record.attendance_status] !== undefined) {
-          counts[record.attendance_status] += 1;
+        if (statusPriority[record.attendance_status] === undefined) return;
+        const member = record.member_code || record.member_id || record.external_member_id || record.id;
+        const key = `${record.session_date}:${member}`;
+        if (statusByMemberDay[key] === undefined
+          || statusPriority[record.attendance_status] > statusPriority[statusByMemberDay[key]]) {
+          statusByMemberDay[key] = record.attendance_status;
         }
       });
-      const total = this.records.length;
+      Object.values(statusByMemberDay).forEach((status) => { counts[status] += 1; });
+      const total = Object.keys(statusByMemberDay).length;
       const attended = counts.present;
       const rate = total ? Math.round((attended / total) * 100) : 0;
-      return { ...counts, total, rate };
+      return { ...counts, total, rate, rawRows: this.records.length };
     },
     summaryStats() {
       const s = this.summary;
       return [
-        { label: 'Present', value: s.present },
-        { label: 'Absent', value: s.absent },
-        { label: 'Excused', value: s.excused },
-        { label: 'Total', value: s.total },
-        { label: 'Recorded Present', value: s.rate + '%', emph: true },
+        { label: 'Present member-days', value: s.present },
+        { label: 'Absent member-days', value: s.absent },
+        { label: 'Excused member-days', value: s.excused },
+        { label: 'Unique member-days', value: s.total },
+        { label: 'Present rate', value: s.rate + '%', emph: true },
       ];
     },
   },

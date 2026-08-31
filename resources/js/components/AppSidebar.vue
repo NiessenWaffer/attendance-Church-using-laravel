@@ -20,10 +20,10 @@ import { api } from '../services/api';
 const DEFAULT_MENU = [
   { path: '/', label: 'Dashboard', icon: 'view-dashboard-outline', exact: true },
   { path: '/members', label: 'Members', icon: 'account-group-outline' },
-  { path: '/schedules', label: 'Schedules', icon: 'calendar-clock-outline' },
-  { path: '/attendance', label: 'Attendance', icon: 'clipboard-check-outline' },
-  { path: '/history', label: 'History', icon: 'history' },
-  { path: '/report', label: 'Report', icon: 'file-chart-outline' },
+  { path: '/schedules', label: 'Service Schedules', icon: 'calendar-clock-outline' },
+  { path: '/attendance', label: 'Dated Services', icon: 'clipboard-check-outline' },
+  { path: '/history', label: 'Attendance Records', icon: 'history' },
+  { path: '/report', label: 'Attendance Reports', icon: 'file-chart-outline' },
   { path: '/audit-logs', label: 'Audit Logs', icon: 'file-clock-outline' },
   { path: '/settings', label: 'Settings', icon: 'cog-outline' },
 ];

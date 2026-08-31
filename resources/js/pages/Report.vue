@@ -24,14 +24,14 @@
         />
       </div>
       <b-select v-model="filters.session_id" size="is-small" @input="load">
-        <option value="">All Sessions</option>
+         <option value="">All Dated Services</option>
         <option v-for="session in sessions" :key="session.id" :value="session.id">{{ session.session_title }}</option>
       </b-select>
       <b-dropdown v-model="filters.attendance_status" aria-role="list" position="is-bottom-left" @change="onStatusFilter">
         <template #trigger>
-          <b-button type="is-light" size="is-small" icon-right="menu-down">Status</b-button>
+           <b-button type="is-light" size="is-small" icon-right="menu-down">Attendance Status</b-button>
         </template>
-        <b-dropdown-item :value="''">All Status</b-dropdown-item>
+         <b-dropdown-item :value="''">All Attendance Statuses</b-dropdown-item>
         <b-dropdown-item :value="'present'">Present</b-dropdown-item>
         <b-dropdown-item :value="'absent'">Absent</b-dropdown-item>
         <b-dropdown-item :value="'excused'">Excused</b-dropdown-item>
@@ -67,12 +67,12 @@
     <app-table-panel id="report-view-panel" grow role="tabpanel" :aria-labelledby="`report-tab-${activeView}`">
       <template #meta>
         <template v-if="activeView === 'sunday'">
-          <span class="table-meta-title">Sunday Attendance</span>
-          <span class="report-table-note">Unique attendees count once per Sunday, even across multiple services.</span>
+           <span class="table-meta-title">Sunday Member Attendance</span>
+           <span class="report-table-note">Each member counts once per Sunday, even across multiple services.</span>
         </template>
-        <span v-else-if="activeView === 'youth'" class="table-meta-title">Youth Participation</span>
+         <span v-else-if="activeView === 'youth'" class="table-meta-title">Youth Service Attendance</span>
         <template v-else>
-          <span class="table-meta-title">Attendance by Session · <strong>{{ bySession.length }}</strong></span>
+           <span class="table-meta-title">Attendance by Dated Service · <strong>{{ bySession.length }}</strong></span>
           <span v-if="loading" class="loading-text">Loading...</span>
         </template>
       </template>
@@ -82,13 +82,13 @@
           <b-table-column label="Sunday" field="date" sortable>
             <template v-slot="props">{{ props.row.date }}</template>
           </b-table-column>
-          <b-table-column label="Unique Attendees" field="unique_attendees" numeric>
+           <b-table-column label="Members Attending" field="unique_attendees" numeric>
             <template v-slot="props">{{ props.row.present }}</template>
           </b-table-column>
-          <b-table-column label="Service Participations" field="service_participations" numeric>
+           <b-table-column label="Service Attendances" field="service_participations" numeric>
             <template v-slot="props">{{ props.row.service_participations }}</template>
           </b-table-column>
-          <b-table-column label="Missed" field="missed" numeric>
+           <b-table-column label="No Sunday Attendance" field="missed" numeric>
             <template v-slot="props">{{ props.row.missed }}</template>
           </b-table-column>
           <b-table-column label="Rate" field="rate">
@@ -120,7 +120,7 @@
           <b-table-column label="Worship Only" field="worship_only" numeric>
             <template v-slot="props">{{ props.row.worship_only }}</template>
           </b-table-column>
-          <b-table-column label="No Sunday Scan" field="no_sunday_scan" numeric>
+           <b-table-column label="No Sunday Attendance" field="no_sunday_scan" numeric>
             <template v-slot="props">{{ props.row.no_sunday_scan }}</template>
           </b-table-column>
         </b-table>
@@ -133,7 +133,7 @@
 
       <div v-else-if="activeView === 'sessions' && bySession.length" class="member-table-wrap">
         <b-table :data="bySession" hoverable :loading="loading" class="page-table">
-          <b-table-column label="Session" field="session_title" sortable>
+           <b-table-column label="Dated Service" field="session_title" sortable>
             <template v-slot="props">
               <span class="cell-title">{{ props.row.session_title }}</span>
             </template>
@@ -141,16 +141,16 @@
           <b-table-column label="Date" field="session_date" sortable width="110">
             <template v-slot="props">{{ props.row.session_date }}</template>
           </b-table-column>
-          <b-table-column label="Participants" field="participation_count" numeric width="100">
+           <b-table-column label="People Present" field="participation_count" numeric width="100">
             <template v-slot="props">{{ props.row.participation_count }}</template>
           </b-table-column>
-          <b-table-column label="Expected" field="expected_present_count" numeric width="90">
+           <b-table-column label="Eligible Present" field="expected_present_count" numeric width="105">
             <template v-slot="props">{{ props.row.expected_present_count }} / {{ props.row.eligible_member_count }}</template>
           </b-table-column>
           <b-table-column label="Guest / Other" field="guest_other_count" numeric width="105">
             <template v-slot="props">{{ props.row.guest_other_count }}</template>
           </b-table-column>
-          <b-table-column label="Audience Rate" field="attendance_rate" width="180">
+           <b-table-column label="Eligible-Member Rate" field="attendance_rate" width="180">
             <template v-slot="props">
               <div class="rate-cell">
                 <div class="rate-track">
@@ -193,9 +193,9 @@ export default {
       sessionsRequestSeq: 0,
       activeView: 'sunday',
       reportViews: [
-        { id: 'sunday', label: 'Sunday' },
-        { id: 'youth', label: 'Youth' },
-        { id: 'sessions', label: 'Sessions' },
+         { id: 'sunday', label: 'Sunday Attendance' },
+         { id: 'youth', label: 'Youth Attendance' },
+         { id: 'sessions', label: 'By Dated Service' },
       ],
     };
   },
@@ -221,9 +221,9 @@ export default {
       const sunday = this.sundayOverview;
       return [
         { label: 'Members', value: sunday.active_members || 0 },
-        { label: 'Sunday Unique', value: sunday.unique_attendee_days || 0 },
-        { label: 'Service Visits', value: sunday.service_participations || 0 },
-        { label: 'All-Date Unique', value: (this.generalData.overview || {}).unique_attendee_days || 0 },
+         { label: 'Sunday Member-Days', value: sunday.unique_attendee_days || 0 },
+         { label: 'Service Attendances', value: sunday.service_participations || 0 },
+         { label: 'All-Date Member-Days', value: (this.generalData.overview || {}).unique_attendee_days || 0 },
         { label: 'Sundays', value: sunday.sundays || 0 },
         { label: 'Sunday Rate', value: (sunday.rate || 0) + '%', emph: true },
       ];

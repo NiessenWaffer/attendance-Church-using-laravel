@@ -1,31 +1,31 @@
 <template>
   <app-page>
     <app-filter-bar>
-      <b-input v-model="filters.search" placeholder="Search services..." icon="magnify" size="is-small" class="search-input" @input="loadSchedules" />
+      <b-input v-model="filters.search" placeholder="Search service names..." icon="magnify" size="is-small" class="search-input" @input="loadSchedules" />
       <b-select v-model="filters.status" size="is-small" @input="loadSchedules">
         <option value="">All Status</option>
         <option value="active">Active</option>
         <option value="inactive">Inactive</option>
       </b-select>
       <b-select v-model="filters.service_type" size="is-small" @input="loadSchedules">
-        <option value="">All Categories</option>
+        <option value="">All Service Types</option>
         <option v-for="type in serviceTypeOptions" :key="type.value" :value="type.value">{{ type.label }}</option>
       </b-select>
       <b-select v-model="filters.origin" size="is-small" @input="loadSchedules">
-        <option value="">All Origins</option>
-        <option value="default">Built-in</option>
-        <option value="custom">Custom</option>
+        <option value="">All Sources</option>
+        <option value="default">System-provided</option>
+        <option value="custom">Created by an admin</option>
       </b-select>
       <template #actions>
-        <b-button type="is-light" size="is-small" @click="rangeOpen = true">Generate Range</b-button>
-        <b-button type="is-dark" size="is-small" @click="openCreate">Add Service</b-button>
+        <b-button type="is-light" size="is-small" @click="rangeOpen = true">Create Dated Services</b-button>
+        <b-button type="is-dark" size="is-small" @click="openCreate">Add Service Schedule</b-button>
       </template>
     </app-filter-bar>
 
     <section class="work-area">
       <app-table-panel>
         <template #meta>
-          <span>Showing <strong>{{ schedules.length }}</strong> service(s)</span>
+          <span>Showing <strong>{{ schedules.length }}</strong> service schedule(s)</span>
           <span v-if="loading" class="loading-text">Loading...</span>
         </template>
 
@@ -43,7 +43,7 @@
               <span class="cell-sub schedule-description">{{ props.row.description || 'Recurring attendance service' }}</span>
             </b-table-column>
 
-            <b-table-column field="schedule_day" label="Recurrence" width="130" v-slot="props">
+            <b-table-column field="schedule_day" label="When It Repeats" width="130" v-slot="props">
               <span class="cell-title">{{ scheduleDayLabel(props.row) }}</span>
               <span v-if="recurrenceDetail(props.row)" class="cell-sub">{{ recurrenceDetail(props.row) }}</span>
             </b-table-column>
@@ -52,7 +52,7 @@
               <span class="text-neutral schedule-time">{{ timeLabel(props.row) }}</span>
             </b-table-column>
 
-            <b-table-column field="service_type" label="Category / Audience" width="190" v-slot="props">
+            <b-table-column field="service_type" label="Type / Eligible Ministries" width="190" v-slot="props">
               <span class="cell-title schedule-category">{{ props.row.service_type || props.row.session_type || '-' }}</span>
               <span class="cell-sub">{{ ministryLabel(props.row) }}</span>
             </b-table-column>
@@ -83,7 +83,7 @@
 
       <aside class="side-panel">
         <div v-if="selectedSchedule" class="detail-container">
-          <div class="panel-header"><span class="panel-eyebrow">Service Template</span></div>
+          <div class="panel-header"><span class="panel-eyebrow">Reusable Service Schedule</span></div>
           <div class="profile-header">
             <h2 class="profile-name">{{ selectedSchedule.name }}</h2>
             <span class="status-tag" :class="selectedSchedule.is_active ? 'status-active' : 'status-inactive'">
@@ -92,19 +92,19 @@
           </div>
           <div class="detail-list">
             <div class="detail-row"><span class="detail-label">Description</span><span class="detail-val">{{ selectedSchedule.description || '-' }}</span></div>
-            <div class="detail-row"><span class="detail-label">Schedule Day</span><span class="detail-val">{{ scheduleDayLabel(selectedSchedule) }}</span></div>
-            <div class="detail-row" v-if="selectedSchedule.schedule_day === 'One-time'"><span class="detail-label">Specific Date</span><span class="detail-val">{{ selectedSchedule.specific_date || '-' }}</span></div>
-            <div class="detail-row"><span class="detail-label">Time Window</span><span class="detail-val">{{ timeLabel(selectedSchedule) }}</span></div>
+            <div class="detail-row"><span class="detail-label">Repeats On</span><span class="detail-val">{{ scheduleDayLabel(selectedSchedule) }}</span></div>
+            <div class="detail-row" v-if="selectedSchedule.schedule_day === 'One-time'"><span class="detail-label">Service Date</span><span class="detail-val">{{ selectedSchedule.specific_date || '-' }}</span></div>
+            <div class="detail-row"><span class="detail-label">Service Time</span><span class="detail-val">{{ timeLabel(selectedSchedule) }}</span></div>
             <div class="detail-row"><span class="detail-label">Service Type</span><span class="detail-val">{{ selectedSchedule.service_type || selectedSchedule.session_type || '-' }}</span></div>
-            <div class="detail-row"><span class="detail-label">Ministries</span><span class="detail-val">{{ (selectedSchedule.ministries || []).join(', ') || '-' }}</span></div>
+            <div class="detail-row"><span class="detail-label">Eligible Ministries</span><span class="detail-val">{{ (selectedSchedule.ministries || []).join(', ') || 'All active members' }}</span></div>
           </div>
           <p class="schedule-help">
-            This template does not hold attendance. A dated session is generated from the schedule, then attendance is recorded from the Attendance page.
+             This schedule does not hold attendance. Creating a date produces a dated service, where attendance is recorded.
           </p>
           <div class="att-save-row">
             <button class="button" type="button" @click="openEdit(selectedSchedule)">Edit Service</button>
             <button class="button is-dark" type="button" :disabled="generating || !selectedScheduleActive" @click="generateToday">
-              {{ generating ? 'Generating...' : 'Generate Today' }}
+              {{ generating ? 'Creating...' : "Create Today's Service" }}
             </button>
           </div>
         </div>
@@ -198,9 +198,9 @@
 
     <b-modal v-model="rangeOpen" :width="430">
       <div class="range-modal">
-        <p class="eyebrow">Session Generation</p>
-        <h2 class="drawer-title">Generate Date Range</h2>
-        <p class="range-help">Create scheduled attendance sessions for all active services in this range.</p>
+         <p class="eyebrow">Create Dated Services</p>
+         <h2 class="drawer-title">Create Services for a Date Range</h2>
+         <p class="range-help">Create one dated attendance service for each active schedule in this range.</p>
         <div class="range-fields">
           <b-datepicker v-model="rangeFrom" placeholder="From" format="MMM d, yyyy" icon="calendar-blank-outline" size="is-small" />
           <b-datepicker v-model="rangeTo" placeholder="To" format="MMM d, yyyy" icon="calendar-blank-outline" size="is-small" />
@@ -208,7 +208,7 @@
         <div class="drawer-foot">
           <button class="button" type="button" @click="rangeOpen = false">Cancel</button>
           <button class="button is-dark" type="button" :disabled="rangeGenerating" @click="generateRange">
-            {{ rangeGenerating ? 'Generating...' : 'Generate Sessions' }}
+             {{ rangeGenerating ? 'Creating...' : 'Create Dated Services' }}
           </button>
         </div>
       </div>

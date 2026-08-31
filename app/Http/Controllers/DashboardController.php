@@ -291,20 +291,13 @@ class DashboardController extends Controller
             })
             ->get();
         (new AttendanceAudience($schema, $external))->enrich($eligibleSessions);
-        $opportunityTotal = (int) $eligibleSessions->sum('eligible_member_count');
-        $expectedPresentTotal = (int) $eligibleSessions->sum('expected_present_count');
+        $audience = new AttendanceAudience($schema, $external);
+        $memberDays = $audience->memberDayTotals($eligibleSessions);
+        $opportunityTotal = $memberDays['opportunities'];
+        $expectedPresentTotal = $memberDays['expected_present'];
         $serviceParticipations = (int) $eligibleSessions->sum('participation_count');
         $guestOtherParticipations = (int) $eligibleSessions->sum('guest_other_count');
-        $memberColumn = $schema->recordMemberCodeColumn() ?: $schema->recordMemberIdColumn();
-        $uniqueAttendeeDays = $memberColumn === null ? 0 : $db->table($records . ' as unique_records')
-            ->join($sessions . ' as unique_sessions', 'unique_sessions.id', '=', 'unique_records.' . $schema->recordSessionIdColumn())
-            ->where('unique_sessions.' . $schema->sessionDateColumn(), '<=', now()->format('Y-m-d'))
-            ->where('unique_sessions.' . $schema->sessionStatusColumn(), '!=', 'cancelled')
-            ->whereRaw('(' . $schema->attendanceStatusSelectSql('unique_records', 'unique_sessions') . ') = ?', ['present'])
-            ->select('unique_sessions.' . $schema->sessionDateColumn(), 'unique_records.' . $memberColumn)
-            ->distinct()
-            ->get()
-            ->count();
+        $uniqueAttendeeDays = $memberDays['unique_attendee_days'];
 
         if ($eligibleSessions->isNotEmpty()) {
             $overallRate = AttendanceSchema::attendanceRate($expectedPresentTotal, $opportunityTotal);
@@ -319,6 +312,17 @@ class DashboardController extends Controller
                 DB::raw('(SELECT COUNT(*) FROM ' . $records . ' WHERE ' . $records . '.' . $schema->recordSessionIdColumn() . ' = ' . $sessions . '.id) as record_count'),
                 DB::raw($schema->presentCountSelectSql($sessions, $records) . ' as present_count')
             )
+            ->where($sessions . '.' . $schema->sessionStatusColumn(), '!=', 'cancelled')
+            ->where(function ($query) use ($sessions, $schema) {
+                $query->where($sessions . '.' . $schema->sessionDateColumn(), '<', now()->format('Y-m-d'))
+                    ->orWhere(function ($query) use ($sessions, $schema) {
+                        $query->where($sessions . '.' . $schema->sessionDateColumn(), now()->format('Y-m-d'))
+                            ->where(function ($query) use ($sessions) {
+                                $query->whereNull($sessions . '.start_time')
+                                    ->orWhere($sessions . '.start_time', '<=', now()->format('H:i:s'));
+                            });
+                    });
+            })
             ->whereExists(function ($query) {
                 $schema = app(AttendanceSchema::class);
                 $query->selectRaw('1')
@@ -336,15 +340,44 @@ class DashboardController extends Controller
         $statuses = ['present', 'absent', 'excused'];
         $statusBreakdown = [];
 
-        if ($schema->recordStatusColumn()) {
-            $statusRow = $db->table($records)
-                ->select($schema->recordStatusColumn(), DB::raw('COUNT(*) as total'))
-                ->groupBy($schema->recordStatusColumn())
-                ->pluck('total', $schema->recordStatusColumn())
-                ->all();
-        } else {
-            $statusRow = ['present' => $db->table($records)->whereNotNull($schema->recordCheckInColumn())->count()];
+        $statusMemberColumn = $schema->recordMemberCodeColumn() ?: $schema->recordMemberIdColumn();
+        $statusIdentity = $statusMemberColumn ?: 'id';
+        $statusRows = $db->table($records . ' as status_records')
+            ->join($sessions . ' as status_sessions', 'status_sessions.id', '=', 'status_records.' . $schema->recordSessionIdColumn())
+            ->select(
+                DB::raw('status_sessions.' . $schema->sessionDateColumn() . ' as attendance_date'),
+                DB::raw('status_records.' . $statusIdentity . ' as member_identifier'),
+                DB::raw($schema->attendanceStatusSelectSql('status_records', 'status_sessions') . ' as attendance_status')
+            )
+            ->where('status_sessions.' . $schema->sessionStatusColumn(), '!=', 'cancelled')
+            ->where(function ($query) use ($schema) {
+                $query->where('status_sessions.' . $schema->sessionDateColumn(), '<', now()->format('Y-m-d'))
+                    ->orWhere(function ($query) use ($schema) {
+                        $query->where('status_sessions.' . $schema->sessionDateColumn(), now()->format('Y-m-d'))
+                            ->where(function ($query) {
+                                $query->whereNull('status_sessions.start_time')
+                                    ->orWhere('status_sessions.start_time', '<=', now()->format('H:i:s'));
+                            });
+                    });
+            })
+            ->distinct()->get();
+        $statusPriority = ['present' => 3, 'excused' => 2, 'absent' => 1];
+        $statusByMemberDay = [];
+        foreach ($statusRows as $row) {
+            if (!isset($statusPriority[$row->attendance_status])) {
+                continue;
+            }
+            $key = (string) $row->attendance_date . ':' . (string) $row->member_identifier;
+            if (!isset($statusByMemberDay[$key])
+                || $statusPriority[$row->attendance_status] > $statusPriority[$statusByMemberDay[$key]]) {
+                $statusByMemberDay[$key] = $row->attendance_status;
+            }
         }
+        $statusRow = array_fill_keys($statuses, 0);
+        foreach ($statusByMemberDay as $status) {
+            $statusRow[$status]++;
+        }
+        $recordTotal = count($statusByMemberDay);
 
         foreach ($statuses as $status) {
             $statusBreakdown[] = [
@@ -384,6 +417,16 @@ class DashboardController extends Controller
             ->where($sessions . '.' . $schema->sessionDateColumn(), '>=', $monthStart->format('Y-m-d'))
             ->where($sessions . '.' . $schema->sessionDateColumn(), '<=', now()->format('Y-m-d'))
             ->where($sessions . '.' . $schema->sessionStatusColumn(), '!=', 'cancelled')
+            ->where(function ($query) use ($sessions, $schema) {
+                $query->where($sessions . '.' . $schema->sessionDateColumn(), '<', now()->format('Y-m-d'))
+                    ->orWhere(function ($query) use ($sessions, $schema) {
+                        $query->where($sessions . '.' . $schema->sessionDateColumn(), now()->format('Y-m-d'))
+                            ->where(function ($query) use ($sessions) {
+                                $query->whereNull($sessions . '.start_time')
+                                    ->orWhere($sessions . '.start_time', '<=', now()->format('H:i:s'));
+                            });
+                    });
+            })
             ->whereRaw('(' . $schema->attendanceStatusSelectSql($records, $sessions) . ') = ?', ['present'])
             ->distinct()
             ->get();
@@ -408,7 +451,7 @@ class DashboardController extends Controller
             $monthly[] = [
                 'month'   => $month->format('Y-m'),
                 'label'   => $month->format('M'),
-                'present' => $participations,
+                'present' => $uniqueDays,
                 'service_participations' => $participations,
                 'unique_attendee_days' => $uniqueDays,
             ];
@@ -416,7 +459,7 @@ class DashboardController extends Controller
 
         return [
             'overall_rate'     => $overallRate,
-            'rate_basis'       => 'target_audience_member_opportunities',
+            'rate_basis'       => 'unique_eligible_member_days',
             'record_total'     => (int) $recordTotal,
             'opportunity_total'=> $opportunityTotal,
             'expected_participations' => $expectedPresentTotal,

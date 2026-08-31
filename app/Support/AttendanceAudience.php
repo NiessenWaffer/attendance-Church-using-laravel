@@ -60,6 +60,56 @@ class AttendanceAudience
         return $sessions;
     }
 
+    /**
+     * Return headline metrics without counting a member more than once per date.
+     * Session-level participation remains available on each enriched session.
+     */
+    public function memberDayTotals(Collection $sessions): array
+    {
+        if ($sessions->isEmpty()) {
+            return ['opportunities' => 0, 'expected_present' => 0, 'unique_attendee_days' => 0];
+        }
+
+        $targetsByService = $this->targetsByService($sessions);
+        $presentBySession = $this->presentBySession($sessions->pluck('id')->all());
+        $dates = [];
+        $presentByDate = [];
+
+        foreach ($sessions as $session) {
+            $date = (string) ($session->session_date ?? '');
+            if ($date === '') {
+                continue;
+            }
+
+            $dates[$date] = true;
+            $targets = $targetsByService[(int) ($session->service_id ?? 0)] ?? [];
+            $eligible = $this->eligibleMembers($targets);
+
+            foreach ($presentBySession[(int) $session->id] ?? [] as $identifier => $_) {
+                // A church-wide report treats a targeted service as another way
+                // to attend that date; a scoped report is limited to its members.
+                if (isset($this->activeMembers[$identifier])
+                    && ($this->participantScope === null || isset($eligible[$identifier]))) {
+                    $presentByDate[$date][$identifier] = true;
+                }
+            }
+        }
+
+        $eligibleMemberCount = count($this->activeMembers);
+        $opportunities = count($dates) * $eligibleMemberCount;
+        $expectedPresent = 0;
+
+        foreach ($presentByDate as $members) {
+            $expectedPresent += count($members);
+        }
+
+        return [
+            'opportunities' => $opportunities,
+            'expected_present' => $expectedPresent,
+            'unique_attendee_days' => $expectedPresent,
+        ];
+    }
+
     private function memberIdentifier(array $member): string
     {
         $value = $this->schema->mode() === 'prod'

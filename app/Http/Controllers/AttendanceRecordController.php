@@ -190,33 +190,40 @@ class AttendanceRecordController extends Controller
         $memberColumn = $schema->recordMemberCodeColumn() ?: $schema->recordMemberIdColumn();
 
         if (!$memberColumn) {
-            return ApiResponse::success(['total' => 0, 'present' => 0, 'rate' => 0, 'last_attendance_date' => null]);
+            return ApiResponse::success(['total' => 0, 'present' => 0, 'eligible_member_days' => 0, 'present_member_days' => 0, 'rate' => 0, 'last_attendance_date' => null]);
         }
 
         $storedIdentifier = $identifier;
         if ($schema->recordMemberCodeColumn() === null && $schema->recordMemberIdColumn() !== null) {
             $member = app(MemberFetchService::class)->findByCode((string) $identifier);
             if (!$member || empty($member['external_id'])) {
-                return ApiResponse::success(['total' => 0, 'present' => 0, 'rate' => 0, 'last_attendance_date' => null]);
+                return ApiResponse::success(['total' => 0, 'present' => 0, 'eligible_member_days' => 0, 'present_member_days' => 0, 'rate' => 0, 'last_attendance_date' => null]);
             }
             $storedIdentifier = $member['external_id'];
         }
 
         $query = $db->table($records . ' as r')
             ->join($sessions . ' as s', 's.id', '=', 'r.' . $schema->recordSessionIdColumn())
-            ->where('r.' . $memberColumn, $storedIdentifier);
+            ->where('r.' . $memberColumn, $storedIdentifier)
+            ->where('s.' . $schema->sessionDateColumn(), '<=', now()->format('Y-m-d'))
+            ->where('s.' . $schema->sessionStatusColumn(), '!=', 'cancelled');
         $present = (clone $query)
             ->whereRaw('(' . $schema->attendanceStatusSelectSql('r', 's') . ') = "present"')
-            ->count('r.id');
+            ->distinct()
+            ->count('s.' . $schema->sessionDateColumn());
         $last = (clone $query)->max('s.' . $schema->sessionDateColumn());
         $total = $db->table($sessions . ' as s')
             ->where('s.' . $schema->sessionDateColumn(), '<=', now()->format('Y-m-d'))
             ->where('s.' . $schema->sessionStatusColumn(), '!=', 'cancelled')
-            ->count('s.id');
+            ->distinct()
+            ->count('s.' . $schema->sessionDateColumn());
 
         return ApiResponse::success([
             'total' => (int) $total,
             'present' => (int) $present,
+            'eligible_member_days' => (int) $total,
+            'present_member_days' => (int) $present,
+            'metric_basis' => 'unique_member_calendar_days',
             'rate' => AttendanceSchema::attendanceRate((int) $present, (int) $total),
             'last_attendance_date' => $last,
         ]);

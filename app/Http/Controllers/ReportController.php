@@ -23,6 +23,8 @@ class ReportController extends Controller
         $recordsTable = $schema->recordsTable();
         $sessionsTable = $schema->sessionsTable();
         $base = AttendanceQuery::forHistory($request);
+        $base->where($sessionsTable . '.' . $schema->sessionStatusColumn(), '!=', 'cancelled');
+        $this->excludeFutureSessions($base, $sessionsTable, $schema);
 
         $ministry = trim((string) $request->input('ministry', ''));
         $members = $this->filteredActiveMembers($fetch, $ministry, $request);
@@ -46,14 +48,27 @@ class ReportController extends Controller
             ->select(
                 DB::raw($schema->attendanceStatusSelectSql($recordsTable, $sessionsTable) . ' as attendance_status'),
                 $recordsTable . '.' . $schema->recordSessionIdColumn(),
-                $statusIdentityColumn
+                $sessionsTable . '.' . $schema->sessionDateColumn() . ' as attendance_date',
+                DB::raw($statusIdentityColumn . ' as member_identifier')
             )
             ->distinct()
             ->get();
+        $statusByMemberDay = [];
+        $statusPriority = ['present' => 3, 'excused' => 2, 'absent' => 1];
         foreach ($statusRows as $row) {
-            if (array_key_exists($row->attendance_status, $statuses)) {
-                $statuses[$row->attendance_status]++;
+            if (!array_key_exists($row->attendance_status, $statuses)) {
+                continue;
             }
+
+            $identity = (string) $row->member_identifier;
+            $key = (string) $row->attendance_date . ':' . $identity;
+            $current = $statusByMemberDay[$key] ?? null;
+            if ($current === null || $statusPriority[$row->attendance_status] > $statusPriority[$current]) {
+                $statusByMemberDay[$key] = $row->attendance_status;
+            }
+        }
+        foreach ($statusByMemberDay as $status) {
+            $statuses[$status]++;
         }
 
         $total = array_sum($statuses);
@@ -61,8 +76,9 @@ class ReportController extends Controller
 
         $audience = new AttendanceAudience($schema, $members, $this->hasMemberScope($request, $ministry));
         $audience->enrich($bySession);
-        $rateDenominator = (int) $bySession->sum('eligible_member_count');
-        $expectedPresent = (int) $bySession->sum('expected_present_count');
+        $memberDays = $audience->memberDayTotals($bySession);
+        $rateDenominator = $memberDays['opportunities'];
+        $expectedPresent = $memberDays['expected_present'];
         $serviceParticipations = (int) $bySession->sum('participation_count');
         $guestOtherParticipations = (int) $bySession->sum('guest_other_count');
         $rate = AttendanceSchema::attendanceRate($expectedPresent, $rateDenominator);
@@ -77,7 +93,7 @@ class ReportController extends Controller
             'total'      => $total,
             'rate'       => $rate,
             'rate_denominator' => $rateDenominator,
-            'rate_basis' => 'target_audience_member_opportunities_in_reported_sessions',
+            'rate_basis' => 'unique_eligible_member_days',
             'expected_participations' => $expectedPresent,
             'service_participations' => $serviceParticipations,
             'guest_other_participations' => $guestOtherParticipations,
@@ -117,6 +133,8 @@ class ReportController extends Controller
         (new AttendanceAudience($schema, $members, $this->hasMemberScope($request, $ministry)))->enrich($bySession);
 
         $query = AttendanceQuery::forHistory($request);
+        $query->where($sessionsTable . '.' . $schema->sessionStatusColumn(), '!=', 'cancelled');
+        $this->excludeFutureSessions($query, $sessionsTable, $schema);
         if ($this->hasMemberScope($request, $ministry) && $memberColumn !== null) {
             $query->whereIn($recordsTable . '.' . $memberColumn, array_keys($members));
         }

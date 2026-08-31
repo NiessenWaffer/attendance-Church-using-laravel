@@ -35,26 +35,26 @@
       <div class="stat-box">
         <div class="stat-box-head">
           <b-icon icon="calendar-check-outline" size="is-small"></b-icon>
-          <span class="stat-box-title">Sessions</span>
+           <span class="stat-box-title">Dated Services</span>
         </div>
         <div class="stat-box-body">
           <button type="button" class="stat-row" @click="goSessions('')">
-            <span class="stat-row-label">Total Sessions</span>
+             <span class="stat-row-label">Total Dated Services</span>
             <strong class="stat-row-value">{{ sessions.total }}</strong>
           </button>
           <button type="button" class="stat-row" @click="goSessions('open')">
-            <span class="stat-row-label">Open Sessions</span>
+             <span class="stat-row-label">Scheduled or Active</span>
             <strong class="stat-row-value">{{ sessions.open }}</strong>
           </button>
           <button type="button" class="stat-row" @click="goSessions('closed')">
-            <span class="stat-row-label">Closed Sessions</span>
+             <span class="stat-row-label">Completed or Cancelled</span>
             <strong class="stat-row-value">{{ sessions.closed }}</strong>
           </button>
           <div class="stat-divider"></div>
           <button type="button" class="stat-row" :disabled="!latestSession" @click="goLatestSession">
             <span class="stat-row-label">
-              Latest Session
-              <span class="stat-row-sub">{{ latestSession ? latestSession.session_title : 'No session yet' }}</span>
+               Latest Dated Service
+               <span class="stat-row-sub">{{ latestSession ? latestSession.session_title : 'No service yet' }}</span>
             </span>
             <strong class="stat-row-value">
               <template v-if="latestSession">
@@ -73,14 +73,14 @@
         <div class="analytics-grid">
           <!-- Overall Rate -->
           <div class="analytics-panel">
-            <div class="analytics-panel-title">Target Audience Attendance Rate</div>
+            <div class="analytics-panel-title">Eligible-Member Attendance Rate</div>
             <div class="overall-rate-value">{{ analytics.overall_rate !== null ? analytics.overall_rate + '%' : '—' }}</div>
-            <div class="overall-rate-sub">{{ analytics.expected_participations }} expected participations / {{ analytics.opportunity_total }} opportunities · {{ analytics.service_participations }} total participations · {{ analytics.unique_attendee_days }} unique attendee-days</div>
+            <div class="overall-rate-sub">{{ analytics.expected_participations }} eligible members attended out of {{ analytics.opportunity_total }} attendance opportunities · {{ analytics.service_participations }} service attendances · {{ analytics.unique_attendee_days }} unique member-days</div>
           </div>
 
           <!-- Attendance Trend -->
           <div class="analytics-panel">
-            <div class="analytics-panel-title">Attendance Trend</div>
+            <div class="analytics-panel-title">Attendance Rate by Dated Service</div>
             <div v-if="analytics.trend.length" class="trend-chart">
               <div
                 v-for="(point, i) in analytics.trend"
@@ -100,7 +100,7 @@
 
           <!-- Monthly Attendance -->
           <div class="analytics-panel">
-            <div class="analytics-panel-title">Monthly Unique Attendee-Days</div>
+            <div class="analytics-panel-title">Different Members Attending Each Month</div>
             <div v-if="analytics.monthly.length" class="trend-chart">
               <div v-for="(m, i) in analytics.monthly" :key="i" class="trend-col">
                 <span class="trend-value">{{ m.unique_attendee_days }}</span>
@@ -115,7 +115,7 @@
 
           <!-- Status Breakdown -->
           <div class="analytics-panel">
-            <div class="analytics-panel-title">Status Breakdown</div>
+             <div class="analytics-panel-title">Member-Day Attendance Status</div>
             <div class="status-bars">
               <div v-for="s in analytics.status_breakdown" :key="s.status" class="status-row">
                 <span class="status-name">{{ capitalize(s.status) }}</span>
@@ -141,7 +141,7 @@
       <app-table-panel grow>
         <template #meta>
           <span class="table-meta-text">
-            Recent Sessions — <strong>{{ recentSessions.length }}</strong>
+             Recent Dated Services — <strong>{{ recentSessions.length }}</strong>
             <span v-if="loading" class="loading-text">Loading...</span>
           </span>
         </template>
@@ -154,7 +154,7 @@
             class="page-table"
             @click="openAttendance"
           >
-            <b-table-column field="session_title" label="Session" v-slot="props">
+             <b-table-column field="session_title" label="Service" v-slot="props">
               <span class="member-fullname">{{ props.row.session_title }}</span>
             </b-table-column>
 
@@ -162,8 +162,8 @@
               <span class="text-neutral">{{ props.row.session_date }}</span>
             </b-table-column>
 
-            <b-table-column field="present" label="Expected Audience" width="160" v-slot="props">
-              <span class="text-neutral">{{ props.row.expected_present_count || 0 }} / {{ props.row.eligible_member_count || 0 }} expected<span v-if="props.row.guest_other_count"> · +{{ props.row.guest_other_count }} other</span></span>
+             <b-table-column field="present" label="Eligible Members Present" width="190" v-slot="props">
+               <span class="text-neutral">{{ props.row.expected_present_count || 0 }} of {{ props.row.eligible_member_count || 0 }}<span v-if="props.row.guest_other_count"> · +{{ props.row.guest_other_count }} guests/other</span></span>
             </b-table-column>
 
             <b-table-column field="is_closed" label="Status" width="90" v-slot="props">
@@ -176,7 +176,7 @@
 
         <div v-else-if="!loading" class="empty-state">
           <p class="empty-title">No sessions yet</p>
-          <p class="empty-desc">Create or activate a schedule, then generate a session from the Schedules page.</p>
+           <p class="empty-desc">Create or activate a service schedule, then create its dated service from Service Schedules.</p>
         </div>
       </app-table-panel>
 

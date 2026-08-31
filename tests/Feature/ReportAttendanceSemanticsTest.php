@@ -87,6 +87,8 @@ class ReportAttendanceSemanticsTest extends TestCase
 
         $data = $this->summary();
 
+        $this->assertSame(1, $data['total']);
+        $this->assertSame(1, $data['statuses']['present']);
         $this->assertSame(3, $data['service_participations']);
         $this->assertSame(1, $data['sunday']['overview']['unique_attendee_days']);
         $this->assertSame(3, $data['sunday']['overview']['service_participations']);
@@ -151,13 +153,13 @@ class ReportAttendanceSemanticsTest extends TestCase
         $this->assertNotNull($empty);
         $this->assertSame(0, $empty['participation_count']);
         $this->assertSame(3, $empty['eligible_member_count']);
-        $this->assertSame(6, $data['rate_denominator']);
+        $this->assertSame(3, $data['rate_denominator']);
         $this->assertSame(1, $data['expected_participations']);
-        $this->assertSame(17, $data['rate']);
+        $this->assertSame(33, $data['rate']);
 
         $absentData = $this->summary(['attendance_status' => 'absent']);
         $this->assertCount(2, $absentData['by_session']);
-        $this->assertSame(17, $absentData['rate']);
+        $this->assertSame(33, $absentData['rate']);
         $this->assertSame(0, $absentData['statuses']['absent']);
     }
 

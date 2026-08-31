@@ -157,7 +157,7 @@ class KioskController extends Controller
             ? collect()
             : $db->table($recordsTable)
                 ->whereIn($sessionIdColumn, $ids)
-                ->select($sessionIdColumn, DB::raw('COUNT(*) as count'))
+                ->select($sessionIdColumn, DB::raw($memberColumn === null ? 'COUNT(*) as count' : 'COUNT(DISTINCT ' . $memberColumn . ') as count'))
                 ->groupBy($sessionIdColumn)
                 ->pluck('count', $sessionIdColumn);
 
@@ -280,9 +280,16 @@ class KioskController extends Controller
                 ->get();
             app(MemberFetchService::class)->hydrateRecords($rows);
 
+            $seenBySession = [];
             foreach ($rows as $row) {
                 $name = trim((string) ($row->first_name ?? '') . ' ' . (string) ($row->last_name ?? ''));
                 $identifier = $row->member_code ?? $row->member_id ?? '';
+                $sessionKey = (string) $row->{$sessionIdColumn};
+                $memberKey = (string) ($row->{$memberAlias} ?? $identifier);
+                if (isset($seenBySession[$sessionKey][$memberKey])) {
+                    continue;
+                }
+                $seenBySession[$sessionKey][$memberKey] = true;
                 $membersBySession[$row->{$sessionIdColumn}][] = [
                     'name' => $row->member_name_cache ?: ($name ?: $identifier),
                     'profile_photo_url' => $row->member_photo_cache,
