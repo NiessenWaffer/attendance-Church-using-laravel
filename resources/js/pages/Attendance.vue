@@ -7,15 +7,15 @@
         <span class="stat-strip-value">{{ sessions.length }}</span>
       </div>
       <div class="stat-strip-item">
-        <span class="stat-strip-label">Service Participations</span>
+        <span class="stat-strip-label">Participations</span>
         <span class="stat-strip-value">{{ summaryPresent }}</span>
       </div>
       <div class="stat-strip-item">
-        <span class="stat-strip-label">Target Audience Opportunities</span>
+        <span class="stat-strip-label">Opportunities</span>
         <span class="stat-strip-value">{{ summaryOpportunities }}</span>
       </div>
       <div class="stat-strip-item stat-strip-item--emph">
-        <span class="stat-strip-label">Target Audience Rate</span>
+        <span class="stat-strip-label">Audience rate</span>
         <span class="stat-strip-value">{{ summaryRate }}%</span>
       </div>
       <div class="stat-strip-live">
@@ -58,23 +58,45 @@
         </div>
 
         <!-- Sessions Table -->
-        <div v-if="sessions.length" class="session-list">
-          <button
-            v-for="session in sessions"
-            :key="session.id"
-            type="button"
-            class="session-card"
-            :class="{ 'is-selected': selectedSession && selectedSession.id === session.id }"
-            @click="onSelectSession(session)"
-          >
-            <span class="session-date">{{ session.session_date }}</span>
-            <span class="session-main">
-              <strong>{{ session.session_title }}</strong>
-              <small>{{ formatTime12(session.start_time) || 'Time not set' }} · {{ session.session_type || 'Service' }}</small>
-            </span>
-            <span class="session-count"><b>{{ session.expected_present_count || 0 }}</b><small>/ {{ session.eligible_member_count || 0 }} expected</small><small v-if="session.guest_other_count" class="session-rate">+ {{ session.guest_other_count }} guest / other</small><small class="session-rate" :class="rateTone(session)">{{ attendanceRate(session) }}% audience rate</small></span>
-            <span class="status-tag" :class="session.is_closed ? 'status-inactive' : 'status-active'">{{ session.is_closed ? 'Closed' : 'Open' }}</span>
-          </button>
+        <div v-if="sessions.length" class="session-table-wrap">
+          <table class="session-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Session / time</th>
+                <th class="is-numeric">Participants</th>
+                <th class="is-numeric">Expected</th>
+                <th class="is-numeric">Other</th>
+                <th class="is-numeric">Rate</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="session in sessions"
+                :key="session.id"
+                class="session-row"
+                :class="{ 'is-selected': selectedSession && selectedSession.id === session.id }"
+                tabindex="0"
+                @click="onSelectSession(session)"
+                @keydown.enter="onSelectSession(session)"
+                @keydown.space.prevent="onSelectSession(session)"
+              >
+                <td class="session-date">{{ session.session_date }}</td>
+                <td>
+                  <span class="session-main">
+                    <strong>{{ session.session_title }}</strong>
+                    <small>{{ formatTime12(session.start_time) || 'Time not set' }} · {{ session.session_type || 'Service' }}</small>
+                  </span>
+                </td>
+                <td class="is-numeric">{{ session.participation_count || 0 }}</td>
+                <td class="is-numeric session-expected">{{ session.expected_present_count || 0 }} / {{ session.eligible_member_count || 0 }}</td>
+                <td class="is-numeric">{{ session.guest_other_count || 0 }}</td>
+                <td class="is-numeric">{{ attendanceRate(session) }}%</td>
+                <td><span class="status-tag" :class="session.is_closed ? 'status-inactive' : 'status-active'">{{ session.is_closed ? 'Closed' : 'Open' }}</span></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <!-- Empty State -->
@@ -86,17 +108,17 @@
         </div>
       </div>
 
-       <!-- Right Panel: records fetched from the scanner system -->
-      <aside class="side-panel">
-        <div v-if="sessionData" class="detail-container">
-          <div class="panel-header">
-            <span class="panel-eyebrow">Fetched Attendance</span>
-            <button class="close-btn" type="button" @click="clearSelection">✕</button>
-          </div>
+       <!-- Right Panel: selected session attendance -->
+       <aside class="side-panel">
+         <div v-if="sessionData" class="detail-container">
+           <div class="panel-header">
+             <span class="panel-eyebrow">Session Attendance</span>
+             <button class="close-btn" type="button" @click="clearSelection">✕</button>
+           </div>
 
-          <div class="profile-header">
-            <h2 class="profile-name">{{ sessionData.session.session_title }}</h2>
-            <span class="att-count-badge">{{ recordCount }} scanner record(s)</span>
+           <div class="profile-header">
+             <h2 class="profile-name">{{ sessionData.session.session_title }}</h2>
+             <span class="att-count-badge">{{ recordCount }} {{ recordCount === 1 ? 'participant' : 'participants' }}</span>
           </div>
 
           <div class="detail-list">
@@ -137,7 +159,7 @@
              </button>
            </div>
 
-           <p class="roster-title">Scanner Records</p>
+            <p class="roster-title">Participants</p>
            <div class="roster-toolbar">
              <b-input
                v-model="rosterSearch"
@@ -152,28 +174,30 @@
              </b-select>
              <b-button size="is-small" type="is-light" :disabled="!recordRows.length" @click="exportRoster">Export</b-button>
            </div>
-          <div class="roster-list">
-            <div v-for="row in filteredRecordRows" :key="row.id" class="roster-row">
-              <span class="roster-name">
+           <div class="roster-list">
+             <div v-if="filteredRecordRows.length" class="roster-head" aria-hidden="true">
+               <span>Name / code</span>
+               <span>Check-in</span>
+               <span></span>
+             </div>
+             <div v-for="row in filteredRecordRows" :key="row.id" class="roster-row">
+               <span class="roster-name">
                 <button
                   class="roster-name-btn"
                   type="button"
                   :disabled="!row.external_member_id && !row.member_code"
                   :title="row.external_member_id ? 'Open member profile' : ''"
                   @click="goToMember(row)"
-                >{{ row.name }}</button>
-                <small class="roster-external-tag">{{ row.external_member_id || 'member' }}</small>
-              </span>
-               <span class="record-status">
-                 Checked in
-                 <small>{{ row.created_at || '-' }}</small>
-                  <button class="record-remove" type="button" :disabled="removingRecordId !== null || attendanceLoading" @click.stop="removeRecord(row)">
-                    {{ removingRecordId === row.id ? 'Removing...' : 'Remove' }}
-                  </button>
+                 >{{ row.name }}</button>
+                 <small class="roster-code">{{ row.external_member_id || row.member_code || 'No code' }}</small>
                </span>
-            </div>
-            <div v-if="!recordRows.length" class="roster-empty">
-              No scanner records have been fetched for this session.
+               <time class="roster-checkin">{{ row.created_at || '-' }}</time>
+               <button class="record-remove" type="button" :disabled="removingRecordId !== null || attendanceLoading" @click.stop="removeRecord(row)">
+                 {{ removingRecordId === row.id ? 'Removing...' : 'Remove' }}
+               </button>
+             </div>
+             <div v-if="!recordRows.length" class="roster-empty">
+               No attendance records for this session.
             </div>
             <div v-else-if="!filteredRecordRows.length" class="roster-empty">
               No records match "{{ rosterSearch }}".
@@ -183,12 +207,12 @@
 
         <!-- Blank State -->
          <div v-else-if="attendanceLoading" class="blank-panel">
-           <p class="blank-title">Loading Session</p>
-           <p class="blank-desc">Fetching attendance records...</p>
-         </div>
-         <div v-else class="blank-panel">
-          <p class="blank-title">No Session Selected</p>
-          <p class="blank-desc">Select a generated session to view attendance records fetched from the scanner system.</p>
+            <p class="blank-title">Loading Session</p>
+            <p class="blank-desc">Loading attendance...</p>
+          </div>
+          <div v-else class="blank-panel">
+           <p class="blank-title">No Session Selected</p>
+           <p class="blank-desc">Select a session to view attendance.</p>
         </div>
       </aside>
     </section>
@@ -319,13 +343,6 @@ export default {
 
     attendanceRate(session) {
       return Number(session.attendance_rate) || 0;
-    },
-
-    rateTone(session) {
-      const rate = this.attendanceRate(session);
-      if (rate >= 75) return 'is-high';
-      if (rate >= 50) return 'is-mid';
-      return 'is-low';
     },
 
     refreshLive() {

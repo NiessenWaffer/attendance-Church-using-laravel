@@ -1,63 +1,85 @@
 <template>
-  <section class="schedules-page">
-    <div class="schedule-layout">
-      <div class="table-panel">
-        <div class="toolbar">
-          <b-input v-model="filters.search" placeholder="Search services..." icon="magnify" @input="loadSchedules" />
-          <b-select v-model="filters.status" @input="loadSchedules">
-            <option value="">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </b-select>
-          <b-select v-model="filters.service_type" @input="loadSchedules">
-            <option value="">All Categories</option>
-            <option v-for="type in serviceTypeOptions" :key="type.value" :value="type.value">{{ type.label }}</option>
-          </b-select>
-          <b-select v-model="filters.origin" @input="loadSchedules">
-            <option value="">All Origins</option>
-            <option value="default">Built-in</option>
-            <option value="custom">Custom</option>
-          </b-select>
-           <b-button type="is-dark" size="is-small" @click="openCreate">+ Add Service</b-button>
-           <b-button type="is-light" size="is-small" @click="rangeOpen = true">Generate Range</b-button>
-        </div>
+  <app-page>
+    <app-filter-bar>
+      <b-input v-model="filters.search" placeholder="Search services..." icon="magnify" size="is-small" class="search-input" @input="loadSchedules" />
+      <b-select v-model="filters.status" size="is-small" @input="loadSchedules">
+        <option value="">All Status</option>
+        <option value="active">Active</option>
+        <option value="inactive">Inactive</option>
+      </b-select>
+      <b-select v-model="filters.service_type" size="is-small" @input="loadSchedules">
+        <option value="">All Categories</option>
+        <option v-for="type in serviceTypeOptions" :key="type.value" :value="type.value">{{ type.label }}</option>
+      </b-select>
+      <b-select v-model="filters.origin" size="is-small" @input="loadSchedules">
+        <option value="">All Origins</option>
+        <option value="default">Built-in</option>
+        <option value="custom">Custom</option>
+      </b-select>
+      <template #actions>
+        <b-button type="is-light" size="is-small" @click="rangeOpen = true">Generate Range</b-button>
+        <b-button type="is-dark" size="is-small" @click="openCreate">Add Service</b-button>
+      </template>
+    </app-filter-bar>
 
-        <div class="table-meta">
+    <section class="work-area">
+      <app-table-panel>
+        <template #meta>
           <span>Showing <strong>{{ schedules.length }}</strong> service(s)</span>
           <span v-if="loading" class="loading-text">Loading...</span>
-        </div>
+        </template>
 
-        <div v-if="schedules.length" class="schedule-card-grid">
-          <article
-            v-for="row in schedules"
-            :key="row.id"
-            class="service-card"
-            :class="{ 'is-selected': selectedSchedule && selectedSchedule.id === row.id }"
-            @click="selectSchedule(row)"
+        <div v-if="schedules.length" class="member-table-wrap schedule-table-wrap">
+          <b-table
+            :data="schedules"
+            :loading="loading"
+            :row-class="scheduleRowClass"
+            hoverable
+            class="page-table schedule-table"
+            @click="selectSchedule"
           >
-            <div class="service-card-top">
-              <span class="service-icon"><b-icon icon="calendar-clock-outline" size="is-small"></b-icon></span>
+            <b-table-column field="name" label="Name / Description" v-slot="props">
+              <span class="cell-title">{{ props.row.name }}</span>
+              <span class="cell-sub schedule-description">{{ props.row.description || 'Recurring attendance service' }}</span>
+            </b-table-column>
+
+            <b-table-column field="schedule_day" label="Recurrence" width="130" v-slot="props">
+              <span class="cell-title">{{ scheduleDayLabel(props.row) }}</span>
+              <span v-if="recurrenceDetail(props.row)" class="cell-sub">{{ recurrenceDetail(props.row) }}</span>
+            </b-table-column>
+
+            <b-table-column field="start_time" label="Time" width="160" v-slot="props">
+              <span class="text-neutral schedule-time">{{ timeLabel(props.row) }}</span>
+            </b-table-column>
+
+            <b-table-column field="service_type" label="Category / Audience" width="190" v-slot="props">
+              <span class="cell-title schedule-category">{{ props.row.service_type || props.row.session_type || '-' }}</span>
+              <span class="cell-sub">{{ ministryLabel(props.row) }}</span>
+            </b-table-column>
+
+            <b-table-column field="is_active" label="Status" width="90" v-slot="props">
+              <span class="status-tag" :class="props.row.is_active ? 'status-active' : 'status-inactive'">
+                {{ props.row.is_active ? 'Active' : 'Inactive' }}
+              </span>
+            </b-table-column>
+
+            <b-table-column label="Actions" width="72" centered v-slot="props">
               <b-dropdown position="is-bottom-left" aria-role="menu" append-to-body @click.native.stop>
-                <template #trigger><button class="action-dots-btn" type="button">•••</button></template>
-                <b-dropdown-item aria-role="menuitem" @click="openEdit(row)">Edit</b-dropdown-item>
-                <b-dropdown-item aria-role="menuitem" @click="toggleSchedule(row)">{{ row.is_active ? 'Deactivate' : 'Activate' }}</b-dropdown-item>
-                <b-dropdown-item v-if="!row.is_default" aria-role="menuitem" class="has-text-danger" @click="confirmDelete(row)">Delete</b-dropdown-item>
+                <template #trigger>
+                  <b-button type="is-light" size="is-small" icon-left="dots-horizontal" aria-label="Service actions" />
+                </template>
+                <b-dropdown-item aria-role="menuitem" @click="openEdit(props.row)">Edit</b-dropdown-item>
+                <b-dropdown-item aria-role="menuitem" @click="toggleSchedule(props.row)">{{ props.row.is_active ? 'Deactivate' : 'Activate' }}</b-dropdown-item>
+                <b-dropdown-item v-if="!props.row.is_default" aria-role="menuitem" class="has-text-danger" @click="confirmDelete(props.row)">Delete</b-dropdown-item>
               </b-dropdown>
-            </div>
-            <h3>{{ row.name }}</h3>
-            <p class="service-description">{{ row.description || 'Recurring attendance service' }}</p>
-            <div class="service-time">{{ timeLabel(row) }}</div>
-            <div class="service-card-footer">
-              <span>{{ scheduleDayLabel(row) }}<small v-if="row.schedule_day === 'One-time'"> · {{ row.specific_date }}</small></span>
-              <span class="status-tag" :class="row.is_active ? 'status-active' : 'status-inactive'">{{ row.is_active ? 'Active' : 'Inactive' }}</span>
-            </div>
-          </article>
+            </b-table-column>
+          </b-table>
         </div>
-        <div v-else class="empty-state">
+        <div v-else-if="!loading" class="empty-state">
           <p class="empty-title">No services</p>
           <p class="empty-desc">Create a recurring or one-time service before generating attendance sessions.</p>
         </div>
-      </div>
+      </app-table-panel>
 
       <aside class="side-panel">
         <div v-if="selectedSchedule" class="detail-container">
@@ -76,9 +98,9 @@
             <div class="detail-row"><span class="detail-label">Service Type</span><span class="detail-val">{{ selectedSchedule.service_type || selectedSchedule.session_type || '-' }}</span></div>
             <div class="detail-row"><span class="detail-label">Ministries</span><span class="detail-val">{{ (selectedSchedule.ministries || []).join(', ') || '-' }}</span></div>
           </div>
-          <div class="schedule-help">
+          <p class="schedule-help">
             This template does not hold attendance. A dated session is generated from the schedule, then attendance is recorded from the Attendance page.
-          </div>
+          </p>
           <div class="att-save-row">
             <button class="button" type="button" @click="openEdit(selectedSchedule)">Edit Service</button>
             <button class="button is-dark" type="button" :disabled="generating || !selectedScheduleActive" @click="generateToday">
@@ -91,7 +113,7 @@
           <p class="blank-desc">Select a service to view its schedule and generate today's session.</p>
         </div>
       </aside>
-    </div>
+    </section>
 
     <b-modal v-model="formOpen" :width="620" scroll="clip">
       <div class="schedule-modal">
@@ -172,7 +194,7 @@
         <p v-if="error" class="att-save-error">{{ error }}</p>
         <div class="drawer-foot"><button class="button" type="button" @click="formOpen = false">Cancel</button><button class="button is-dark" type="button" :disabled="saving" @click="saveSchedule">{{ saving ? 'Saving...' : 'Save Service' }}</button></div>
       </div>
-     </b-modal>
+    </b-modal>
 
     <b-modal v-model="rangeOpen" :width="430">
       <div class="range-modal">
@@ -191,7 +213,7 @@
         </div>
       </div>
     </b-modal>
-  </section>
+  </app-page>
 </template>
 
 <script>
@@ -266,10 +288,18 @@ export default {
       finally { if (requestId === this.loadRequestSeq) this.loading = false; }
     },
     selectSchedule(row) { this.selectedSchedule = row; },
+    scheduleRowClass(row) {
+      return this.selectedSchedule && Number(this.selectedSchedule.id) === Number(row.id) ? 'is-selected' : '';
+    },
     scheduleDayLabel(row) {
       if (row.schedule_day === 'One-time') return 'One-time';
       if (row.schedule_day === 'Daily') return 'Daily';
       return row.schedule_day || 'Weekly';
+    },
+    recurrenceDetail(row) {
+      if (row.schedule_day === 'One-time') return row.specific_date || '';
+      if (row.schedule_day === 'Monthly' && row.day_of_month) return `Day ${row.day_of_month}`;
+      return '';
     },
     timeLabel(row) {
       const start = formatTime12(row.start_time);
@@ -388,25 +418,67 @@ export default {
 </script>
 
 <style scoped>
-.schedules-page { height: calc(100vh - 56px); padding: 12px 14px; color: #20262e; font-family: Inter, "Segoe UI", Arial, sans-serif; background: #f5f6f7; overflow: hidden; }
-.schedule-layout { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(280px, .7fr); gap: 12px; height: 100%; min-height: 0; }
-.schedule-layout > .table-panel, .schedule-layout > .side-panel { min-height: 0; }
-.schedule-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; overflow: auto; padding: 2px; }
-.service-card { padding: 15px; background: #fbfcff; border: 1px solid #e4eaf3; border-radius: 0; cursor: pointer; transition: background .18s ease, border-color .18s ease; }
-.service-card:hover, .service-card.is-selected { background: #f0f5ff; border-color: #9aafd3; }
-.service-card-top, .service-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.service-icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; color: #46658f; background: #e8f0ff; }
-.service-card h3 { margin: 15px 0 4px; color: #1b263b; font-size: 15px; font-weight: 700; }
-.service-description { min-height: 32px; margin: 0; color: #8490a5; font-size: 11px; line-height: 1.45; }
-.service-time { margin: 17px 0; color: #233b62; font-size: 20px; font-weight: 600; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
-.service-card-footer { padding-top: 11px; border-top: 1px solid #e8edf5; color: #6d7890; font-size: 11px; }
-.service-card-footer small { color: #9aa5b7; }
-.schedule-subtitle { display: block; margin-top: 3px; color: #6b7280; font-size: 11px; }
-.schedule-help { margin-top: 14px; padding: 10px; color: #4b5563; background: #f9fafb; border: 1px solid #e5e7eb; font-size: 12px; line-height: 1.5; }
-.range-modal { padding: 20px; background: #fff; }
+.work-area > .table-panel,
+.work-area > .side-panel {
+  min-height: 0;
+}
+
+.schedule-table-wrap {
+  width: 100%;
+}
+
+.schedule-table-wrap .cell-title,
+.schedule-table-wrap .cell-sub {
+  display: block;
+}
+
+.schedule-table ::v-deep .table {
+  min-width: 760px;
+}
+
+.schedule-table ::v-deep tbody tr {
+  cursor: pointer;
+}
+
+.schedule-table ::v-deep tbody tr.is-selected td {
+  color: inherit;
+  background: #eef1f4;
+}
+
+.schedule-description {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-category {
+  text-transform: capitalize;
+}
+
+.schedule-time {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-help {
+  margin: 14px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.range-modal,
+.schedule-modal {
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+}
+
 .range-help { margin: 8px 0 16px; color: #6b7280; font-size: 12px; }
 .range-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.schedule-modal { padding: 20px; background: #fff; }
 .schedule-modal .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .schedule-modal .field { margin-bottom: 0; }
 .span-2 { grid-column: 1 / -1; }
@@ -422,41 +494,21 @@ export default {
 .time-colon { display: flex; align-items: center; padding: 0 7px; color: #6b7280; font-weight: 700; background: transparent; user-select: none; }
 .ministries-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 12px; padding: 8px 10px; border: 1px solid #dbdbdb; border-radius: 0; max-height: 180px; overflow-y: auto; }
 .ministry-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #374151; }
-.schedules-page .time-picker:focus-within { box-shadow: none; }
-.schedules-page .time-picker .select select { border-right: none; height: 34px; }
-.schedules-page .time-colon { border-right: none; background: transparent; }
-@media (max-width: 900px) { .schedules-page { height: auto; min-height: 100%; overflow: visible; } .schedule-layout { grid-template-columns: 1fr; height: auto; overflow: visible; } .schedule-layout > .side-panel { max-height: none; } .schedule-modal .form-grid { grid-template-columns: 1fr; } }
+.time-picker:focus-within { box-shadow: none; }
+.time-picker .select select { border-right: none; height: 34px; }
+.time-colon { border-right: none; background: transparent; }
+
+@media (max-width: 900px) {
+  .schedule-modal .form-grid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 640px) {
-  .schedules-page { padding: 10px; }
-  .schedules-page .toolbar { flex-wrap: wrap; }
-  .schedules-page .toolbar .button { flex: 1 1 auto; }
-  .schedule-card-grid { grid-template-columns: 1fr; }
-  .service-time { font-size: 18px; }
   .range-fields { grid-template-columns: 1fr; }
   .schedule-modal, .range-modal { padding: 14px; }
 }
 @media (max-width: 560px) { .time-range { grid-template-columns: 1fr; } }
 
 @media (max-width: 768px) {
-  .schedules-page .toolbar {
-    align-items: center;
-    padding-bottom: 7px;
-    border-bottom: 1px solid #e5e9ef;
-  }
-
-  .schedules-page .toolbar .button {
-    flex: 0 0 auto;
-  }
-
-  .schedule-card-grid {
-    gap: 0;
-  }
-
-  .schedule-layout > .side-panel {
-    padding-top: 10px;
-    border-top: 1px solid #e5e9ef;
-  }
-
   .schedule-modal,
   .range-modal {
     padding: 12px;

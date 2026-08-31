@@ -47,29 +47,37 @@
       </template>
     </app-filter-bar>
 
-    <section class="report-overview">
-      <div class="report-spotlight">
-        <span class="report-overline">Sunday health</span>
-        <strong>{{ sundayOverview.rate || 0 }}<small>%</small></strong>
-        <span>One scan in any Sunday service counts as present for that Sunday.</span>
-      </div>
-      <div class="report-ranking">
-        <div class="report-ranking-head"><span>Youth participation</span><small>Range summary</small></div>
-        <div class="ranking-list">
-          <div class="ranking-row"><span>Attended Youth</span><b>{{ youthOverview.attended_youth || 0 }}</b></div>
-          <div class="ranking-row"><span>Worship Only</span><b>{{ youthOverview.worship_only || 0 }}</b></div>
-          <div class="ranking-row"><span>No Sunday Scan</span><b>{{ youthOverview.no_sunday_scan || 0 }}</b></div>
-          <div class="ranking-row"><span>Youth Members</span><b>{{ youthOverview.youth_members || 0 }}</b></div>
-        </div>
-      </div>
-    </section>
+    <div class="report-view-tabs" role="tablist" aria-label="Report view">
+      <button
+        v-for="view in reportViews"
+        :key="view.id"
+        :id="`report-tab-${view.id}`"
+        type="button"
+        role="tab"
+        class="report-view-tab"
+        :class="{ 'is-active': activeView === view.id }"
+        :aria-selected="activeView === view.id ? 'true' : 'false'"
+        aria-controls="report-view-panel"
+        @click="activeView = view.id"
+      >
+        {{ view.label }}
+      </button>
+    </div>
 
-    <app-table-panel grow>
+    <app-table-panel id="report-view-panel" grow role="tabpanel" :aria-labelledby="`report-tab-${activeView}`">
       <template #meta>
-        <span>Sunday Attendance Health</span>
+        <template v-if="activeView === 'sunday'">
+          <span class="table-meta-title">Sunday Attendance</span>
+          <span class="report-table-note">Unique attendees count once per Sunday, even across multiple services.</span>
+        </template>
+        <span v-else-if="activeView === 'youth'" class="table-meta-title">Youth Participation</span>
+        <template v-else>
+          <span class="table-meta-title">Attendance by Session · <strong>{{ bySession.length }}</strong></span>
+          <span v-if="loading" class="loading-text">Loading...</span>
+        </template>
       </template>
 
-      <div v-if="sundayRows.length" class="member-table-wrap">
+      <div v-if="activeView === 'sunday' && sundayRows.length" class="member-table-wrap">
         <b-table :data="sundayRows" hoverable class="page-table">
           <b-table-column label="Sunday" field="date" sortable>
             <template v-slot="props">{{ props.row.date }}</template>
@@ -96,18 +104,12 @@
         </b-table>
       </div>
 
-      <div v-else-if="!loading" class="empty-state">
+      <div v-else-if="activeView === 'sunday' && !loading" class="empty-state">
         <p class="empty-title">No Sunday data</p>
         <p class="empty-desc">No Sunday sessions were found in the selected range.</p>
       </div>
-    </app-table-panel>
 
-    <app-table-panel grow>
-      <template #meta>
-        <span>Youth Participation</span>
-      </template>
-
-      <div v-if="youthRows.length" class="member-table-wrap">
+      <div v-else-if="activeView === 'youth' && youthRows.length" class="member-table-wrap">
         <b-table :data="youthRows" hoverable class="page-table">
           <b-table-column label="Sunday" field="date" sortable>
             <template v-slot="props">{{ props.row.date }}</template>
@@ -124,32 +126,12 @@
         </b-table>
       </div>
 
-      <div v-else-if="!loading" class="empty-state">
+      <div v-else-if="activeView === 'youth' && !loading" class="empty-state">
         <p class="empty-title">No youth data</p>
         <p class="empty-desc">No youth members or youth Sundays were found in the selected range.</p>
       </div>
-    </app-table-panel>
 
-    <section class="report-overview report-overview--service">
-      <div class="report-ranking">
-        <div class="report-ranking-head"><span>Strongest sessions</span><small>By target audience rate</small></div>
-        <div v-if="bySession.length" class="ranking-list">
-          <div v-for="row in strongestSessions" :key="row.id || row.session_title" class="ranking-row">
-            <span>{{ row.session_title }}</span><b>{{ row.attendance_rate }}%</b>
-          </div>
-        </div>
-        <span v-else class="report-muted">Run a report to see the ranking.</span>
-      </div>
-    </section>
-
-    <!-- Attendance breakdown by session -->
-    <app-table-panel grow>
-      <template #meta>
-        <span>Attendance by Session — <strong>{{ bySession.length }}</strong> session(s)</span>
-        <span v-if="loading" class="loading-text">Loading...</span>
-      </template>
-
-      <div v-if="bySession.length" class="member-table-wrap">
+      <div v-else-if="activeView === 'sessions' && bySession.length" class="member-table-wrap">
         <b-table :data="bySession" hoverable :loading="loading" class="page-table">
           <b-table-column label="Session" field="session_title" sortable>
             <template v-slot="props">
@@ -181,7 +163,7 @@
         </b-table>
       </div>
 
-      <div v-else-if="!loading" class="empty-state">
+      <div v-else-if="activeView === 'sessions' && !loading" class="empty-state">
         <p class="empty-title">No records in range</p>
         <p class="empty-desc">Adjust the filters to see attendance breakdown by session.</p>
       </div>
@@ -209,6 +191,12 @@ export default {
       downloading: false,
       loadRequestSeq: 0,
       sessionsRequestSeq: 0,
+      activeView: 'sunday',
+      reportViews: [
+        { id: 'sunday', label: 'Sunday' },
+        { id: 'youth', label: 'Youth' },
+        { id: 'sessions', label: 'Sessions' },
+      ],
     };
   },
 
@@ -225,25 +213,17 @@ export default {
       return Array.isArray(this.sundayData.rows) ? this.sundayData.rows : [];
     },
 
-    youthOverview() {
-      return this.youthData.overview || {};
-    },
-
     youthRows() {
       return Array.isArray(this.youthData.rows) ? this.youthData.rows : [];
-    },
-
-    strongestSessions() {
-      return Array.isArray(this.summaryData.strongest_sessions) ? this.summaryData.strongest_sessions : [];
     },
 
     summaryStats() {
       const sunday = this.sundayOverview;
       return [
-        { label: 'Active Members', value: sunday.active_members || 0 },
-        { label: 'Sunday Unique Attendee-Days', value: sunday.unique_attendee_days || 0 },
-        { label: 'Sunday Service Participations', value: sunday.service_participations || 0 },
-        { label: 'All-Date Unique Attendee-Days', value: (this.generalData.overview || {}).unique_attendee_days || 0 },
+        { label: 'Members', value: sunday.active_members || 0 },
+        { label: 'Sunday Unique', value: sunday.unique_attendee_days || 0 },
+        { label: 'Service Visits', value: sunday.service_participations || 0 },
+        { label: 'All-Date Unique', value: (this.generalData.overview || {}).unique_attendee_days || 0 },
         { label: 'Sundays', value: sunday.sundays || 0 },
         { label: 'Sunday Rate', value: (sunday.rate || 0) + '%', emph: true },
       ];
@@ -350,26 +330,36 @@ export default {
   color: #374151;
 }
 
-.report-overview { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
-.report-spotlight { display: flex; flex-direction: column; justify-content: space-between; min-height: 130px; padding: 18px; color: #fff; background: #243b62; }
-.report-overline { color: #b8c9e7; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-.report-spotlight strong { font-size: 32px; font-weight: 600; letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: #fff; }
-.report-spotlight strong small { margin-left: 2px; font-size: 15px; }
-.report-spotlight > span:last-child { color: #c8d4e8; font-size: 11px; }
-.report-ranking { padding: 16px; background: #fff; border: 1px solid #e8edf5; }
-.report-ranking-head { display: flex; justify-content: space-between; margin-bottom: 10px; color: #28364f; font-size: 12px; font-weight: 600; }
-.report-ranking-head small { color: #8b96aa; font-size: 10px; font-weight: 500; }
-.ranking-list { display: flex; flex-direction: column; gap: 8px; }
-.ranking-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eef2f7; color: #607089; font-size: 11px; }
-.ranking-row:last-child { border-bottom: 0; }
-.ranking-row b { color: #31598e; }
-.report-muted { color: #8b96aa; font-size: 11px; }
-@media (max-width: 900px) { .report-overview { grid-template-columns: 1fr; } }
+.report-view-tabs {
+  display: flex;
+  gap: 24px;
+  margin: 2px 0 8px;
+  border-bottom: 1px solid #dfe3e8;
+}
+
+.report-view-tab {
+  margin: 0 0 -1px;
+  padding: 8px 1px 7px;
+  color: #6b7280;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.report-view-tab:hover { color: #29323a; }
+.report-view-tab.is-active { color: #20262c; border-bottom-color: #29323a; }
+.report-view-tab:focus-visible { outline: 2px solid #59636e; outline-offset: 2px; }
+.table-meta-title { color: #3f4750; font-weight: 600; }
+.report-table-note { color: #8a9199; font-weight: 400; }
+
 @media (max-width: 640px) {
-  .report-spotlight { min-height: 110px; padding: 14px; }
-  .report-spotlight strong { font-size: 26px; }
-  .report-ranking { padding: 12px; }
-  .report-ranking-head { align-items: center; flex-direction: row; gap: 8px; }
+  .report-view-tabs { gap: 18px; }
+  .report-table-note { text-align: right; }
   .rate-cell { min-width: 150px; }
 }
 </style>
